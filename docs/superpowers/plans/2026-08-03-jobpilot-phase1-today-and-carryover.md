@@ -2409,6 +2409,82 @@ describe('ConfigStore 프로젝트 관리', () => {
     expect(store.projectById('ghost')).toBeUndefined()
     expect(store.projectById(undefined)).toBeUndefined()
   })
+
+  it('이름 변경 시 다른 프로젝트와 중복되면 거부한다', async () => {
+    const { store } = await ready()
+    await store.addProject('A사', '#000000')
+    const b = await store.addProject('B사', '#111111')
+    await expect(store.renameProject(b.id, 'A사')).rejects.toThrow()
+    expect(store.config.projects[1]!.name).toBe('B사')
+  })
+
+  it('자기 이름 그대로 바꾸는 것은 허용한다', async () => {
+    const { store } = await ready()
+    const p = await store.addProject('A사', '#000000')
+    await store.renameProject(p.id, 'A사')
+    expect(store.config.projects[0]!.name).toBe('A사')
+  })
+})
+
+/** 저장이 실패하는 상황을 만들기 위한 저장소 */
+class FailingStorage extends MemoryStorage {
+  failNextSave = false
+
+  override async save<T>(key: string, value: T): Promise<void> {
+    if (this.failNextSave) {
+      this.failNextSave = false
+      throw new Error('디스크에 쓸 수 없습니다')
+    }
+    await super.save(key, value)
+  }
+}
+
+describe('ConfigStore 저장 실패 처리', () => {
+  async function ready() {
+    const storage = new FailingStorage()
+    const store = createConfigStore(storage)
+    await store.load()
+    return { store, storage }
+  }
+
+  it('추가가 저장에 실패하면 화면 상태를 되돌린다', async () => {
+    const { store, storage } = await ready()
+    storage.failNextSave = true
+    await expect(store.addProject('A사', '#000000')).rejects.toThrow()
+    expect(store.config.projects).toEqual([])
+  })
+
+  it('이름 변경이 저장에 실패하면 이전 이름으로 되돌린다', async () => {
+    const { store, storage } = await ready()
+    const p = await store.addProject('A사', '#000000')
+    storage.failNextSave = true
+    await expect(store.renameProject(p.id, 'B사')).rejects.toThrow()
+    expect(store.config.projects[0]!.name).toBe('A사')
+  })
+
+  it('삭제가 저장에 실패하면 프로젝트가 되살아난다', async () => {
+    const { store, storage } = await ready()
+    const p = await store.addProject('A사', '#000000')
+    storage.failNextSave = true
+    await expect(store.deleteProject(p.id)).rejects.toThrow()
+    expect(store.config.projects.map((x) => x.name)).toEqual(['A사'])
+  })
+
+  it('저장 실패를 error에 남긴다', async () => {
+    const { store, storage } = await ready()
+    storage.failNextSave = true
+    await expect(store.addProject('A사', '#000000')).rejects.toThrow()
+    expect(store.error).toContain('디스크에 쓸 수 없습니다')
+  })
+
+  it('되돌린 뒤 다시 시도하면 성공한다', async () => {
+    const { store, storage } = await ready()
+    storage.failNextSave = true
+    await expect(store.addProject('A사', '#000000')).rejects.toThrow()
+    await store.addProject('A사', '#000000')
+    expect(store.config.projects.map((x) => x.name)).toEqual(['A사'])
+    expect(store.error).toBeNull()
+  })
 })
 ```
 
@@ -2467,36 +2543,43 @@ export class ConfigStore {
       throw new Error(`이미 있는 프로젝트입니다: ${trimmed}`)
     }
     const project: Project = { id: newId('proj'), name: trimmed, color, active: true }
-    this.#config.projects.push(project)
-    await this.#persist()
+    await this.#commit(() => {
+      this.#config.projects.push(project)
+    })
     return project
   }
 
   async renameProject(id: string, name: string): Promise<void> {
     const trimmed = name.trim()
     if (trimmed.length === 0) throw new Error('프로젝트 이름이 비어 있습니다')
-    const p = this.#require(id)
+    this.#require(id)
     if (this.#config.projects.some((o) => o.id !== id && o.name === trimmed)) {
       throw new Error(`이미 있는 프로젝트입니다: ${trimmed}`)
     }
-    p.name = trimmed
-    await this.#persist()
+    await this.#commit(() => {
+      this.#require(id).name = trimmed
+    })
   }
 
   async setProjectColor(id: string, color: string): Promise<void> {
-    this.#require(id).color = color
-    await this.#persist()
+    this.#require(id)
+    await this.#commit(() => {
+      this.#require(id).color = color
+    })
   }
 
   async setProjectActive(id: string, active: boolean): Promise<void> {
-    this.#require(id).active = active
-    await this.#persist()
+    this.#require(id)
+    await this.#commit(() => {
+      this.#require(id).active = active
+    })
   }
 
   async deleteProject(id: string): Promise<void> {
     this.#require(id)
-    this.#config.projects = this.#config.projects.filter((p) => p.id !== id)
-    await this.#persist()
+    await this.#commit(() => {
+      this.#config.projects = this.#config.projects.filter((p) => p.id !== id)
+    })
   }
 
   activeProjects(): Project[] {
@@ -2512,6 +2595,24 @@ export class ConfigStore {
     const p = this.#config.projects.find((x) => x.id === id)
     if (!p) throw new Error(`존재하지 않는 프로젝트입니다: ${id}`)
     return p
+  }
+
+  /**
+   * 변경을 적용하고 저장한다. 저장이 실패하면 화면 상태를 저장 이전으로 되돌린다.
+   *
+   * 되돌리지 않으면 디스크에는 없는 값이 화면에만 남아, 사용자가 저장됐다고
+   * 믿는 상태와 실제 파일이 어긋난다. 스펙의 "조용한 실패를 만들지 않는다"가
+   * 요구하는 것은 오류를 띄우는 것뿐 아니라 거짓 성공을 보여주지 않는 것이다.
+   */
+  async #commit(apply: () => void): Promise<void> {
+    const rollback = $state.snapshot(this.#config) as Config
+    apply()
+    try {
+      await this.#persist()
+    } catch (e) {
+      this.#config = rollback
+      throw e
+    }
   }
 
   async #persist(): Promise<void> {
@@ -2569,6 +2670,7 @@ Vitest는 `vite.config.ts`를 그대로 쓰고 그 안에 `svelte()` 플러그�
 
 ```svelte
 <script lang="ts">
+  import type { Project } from '../lib/types'
   import type { ConfigStore } from '../lib/stores/config.svelte'
 
   let { config }: { config: ConfigStore } = $props()
@@ -2577,21 +2679,35 @@ Vitest는 `vite.config.ts`를 그대로 쓰고 그 안에 `svelte()` 플러그�
   let newColor = $state('#4f7cff')
   let message = $state<string | null>(null)
 
-  async function add() {
+  // 저장은 실패할 수 있다. 모든 변경을 이 함수로 통과시켜, 실패가
+  // unhandled rejection으로 조용히 사라지지 않고 화면에 뜨게 한다.
+  async function run(action: () => Promise<unknown>): Promise<boolean> {
     try {
-      await config.addProject(newName, newColor)
-      newName = ''
+      await action()
       message = null
+      return true
     } catch (e) {
       message = e instanceof Error ? e.message : String(e)
+      return false
     }
+  }
+
+  async function add() {
+    const ok = await run(() => config.addProject(newName, newColor))
+    if (ok) newName = ''
+  }
+
+  async function rename(p: Project, el: HTMLInputElement) {
+    const ok = await run(() => config.renameProject(p.id, el.value))
+    // 실패했으면 저장되지 않은 텍스트가 입력칸에 남지 않게 되돌린다
+    if (!ok) el.value = p.name
   }
 
   async function remove(id: string, name: string) {
     if (!confirm(`'${name}' 프로젝트를 삭제할까요?\n이미 등록된 업무의 분류는 사라집니다.`)) {
       return
     }
-    await config.deleteProject(id)
+    await run(() => config.deleteProject(id))
   }
 </script>
 
@@ -2624,14 +2740,14 @@ Vitest는 `vite.config.ts`를 그대로 쓰고 그 안에 `svelte()` 플러그�
           <input
             class="name"
             value={p.name}
-            onchange={(e) => config.renameProject(p.id, e.currentTarget.value)}
+            onchange={(e) => rename(p, e.currentTarget)}
             aria-label="프로젝트 이름"
           />
           <label>
             <input
               type="checkbox"
               checked={p.active}
-              onchange={(e) => config.setProjectActive(p.id, e.currentTarget.checked)}
+              onchange={(e) => run(() => config.setProjectActive(p.id, e.currentTarget.checked))}
             />
             사용
           </label>

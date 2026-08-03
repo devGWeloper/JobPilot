@@ -2782,11 +2782,25 @@ describe('TaskStore.loadAround', () => {
   })
 
   it('2월처럼 짧은 달에서도 앞뒤 달을 읽는다', async () => {
-    const { store } = setup()
+    // 1일 + 31일로 다음 달을 구하는 계산이 28일짜리 달에서도 맞는지 본다
+    const seed = (id: string, plannedDate: string): TaskFile => ({
+      schemaVersion: SCHEMA_VERSION,
+      tasks: [
+        {
+          id, title: id, status: 'planned', priority: 2,
+          plannedDate, carryCount: 0,
+          createdAt: NOW.toISOString(), updatedAt: NOW.toISOString(),
+        },
+      ],
+    })
+    const { store } = setup({
+      [taskKey('2026-01')]: seed('jan', '2026-01-20'),
+      [taskKey('2026-03')]: seed('mar', '2026-03-05'),
+    })
+
     await store.loadAround('2026-02-28')
-    // 1월·2월·3월 세 개의 슬롯이 준비된다
-    await store.add({ title: 'x', plannedDate: '2026-03-01' })
-    expect(store.all).toHaveLength(1)
+
+    expect(store.all.map((t) => t.id).sort()).toEqual(['jan', 'mar'])
   })
 })
 

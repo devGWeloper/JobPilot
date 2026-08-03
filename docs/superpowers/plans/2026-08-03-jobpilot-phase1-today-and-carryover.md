@@ -141,7 +141,11 @@ dist/
 src-tauri/target/
 data/
 *.local
+.superpowers/
 ```
+
+> `.superpowers/`는 개발 진행 기록용 스크래치 디렉터리다. 저장소에 들어가면 안 된다.
+> 이 파일이 이미 존재하고 위 내용을 담고 있다면 그대로 두고 넘어간다.
 
 `package.json`:
 

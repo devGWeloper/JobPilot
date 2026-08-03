@@ -581,9 +581,11 @@ export const DEFAULT_WORK_SETTINGS: WorkSettings = {
   carryWarningDays: 3,
 }
 
+// DEFAULT_WORK_SETTINGS를 참조로 물면 두 상수가 같은 객체·같은 배열을 공유한다.
+// 소비자가 config.work.workdays를 건드리는 순간 모듈 전역 기본값이 오염된다.
 export const DEFAULT_CONFIG: Config = {
   projects: [],
-  work: DEFAULT_WORK_SETTINGS,
+  work: structuredClone(DEFAULT_WORK_SETTINGS),
 }
 ```
 
@@ -646,6 +648,7 @@ export class StorageCorruptError extends Error {
 import { describe, it, expect } from 'vitest'
 import { MemoryStorage } from './memoryStorage'
 import { FixedClock } from './fixedClock'
+import { DEFAULT_CONFIG, DEFAULT_WORK_SETTINGS } from '../types'
 
 describe('MemoryStorage', () => {
   it('없는 키는 null을 준다', async () => {
@@ -704,6 +707,36 @@ describe('FixedClock', () => {
     const c = new FixedClock(new Date(2026, 7, 3))
     c.now().setDate(20)
     expect(c.now().getDate()).toBe(3)
+  })
+
+  it('생성자에 넘긴 Date를 바깥에서 바꿔도 내부 시각이 안 바뀐다', () => {
+    const d = new Date(2026, 7, 3)
+    const c = new FixedClock(d)
+    d.setDate(20)
+    expect(c.now().getDate()).toBe(3)
+  })
+
+  it('set에 넘긴 Date를 바깥에서 바꿔도 내부 시각이 안 바뀐다', () => {
+    const c = new FixedClock(new Date(2026, 7, 3))
+    const d = new Date(2026, 7, 5)
+    c.set(d)
+    d.setDate(20)
+    expect(c.now().getDate()).toBe(5)
+  })
+})
+
+describe('기본 설정 상수', () => {
+  it('DEFAULT_CONFIG.work가 DEFAULT_WORK_SETTINGS와 객체를 공유하지 않는다', () => {
+    expect(DEFAULT_CONFIG.work).not.toBe(DEFAULT_WORK_SETTINGS)
+  })
+
+  it('DEFAULT_CONFIG.work의 배열을 바꿔도 DEFAULT_WORK_SETTINGS가 안 바뀐다', () => {
+    DEFAULT_CONFIG.work.workdays.push(6)
+    try {
+      expect(DEFAULT_WORK_SETTINGS.workdays).toEqual([1, 2, 3, 4, 5])
+    } finally {
+      DEFAULT_CONFIG.work.workdays = [1, 2, 3, 4, 5]
+    }
   })
 })
 ```
@@ -765,7 +798,14 @@ import type { Clock } from '../ports/clock'
 
 /** 테스트용. 시각을 고정하고 임의로 옮긴다. */
 export class FixedClock implements Clock {
-  constructor(private current: Date) {}
+  private current: Date
+
+  // 들어오고 나가는 모든 경로에서 Date를 복사한다.
+  // 한 경로라도 참조를 그대로 쥐면 바깥에서 원본을 바꿨을 때
+  // 고정돼 있어야 할 시계가 흔들린다.
+  constructor(current: Date) {
+    this.current = new Date(current.getTime())
+  }
 
   now(): Date {
     return new Date(this.current.getTime())
@@ -2490,11 +2530,15 @@ export class ConfigStore {
   }
 }
 
-/** 저장 당시 없던 필드가 있어도 기본값으로 채워 넣는다 */
+/**
+ * 저장 당시 없던 필드가 있어도 기본값으로 채워 넣는다.
+ * DEFAULT_WORK_SETTINGS를 얕게 펼치면 workdays 같은 배열이 전역 기본값과
+ * 같은 참조가 되므로, 기본값 쪽은 깊은 복사로 가져온다.
+ */
 function normalize(raw: Partial<Config> | undefined): Config {
   return {
     projects: raw?.projects ?? [],
-    work: { ...DEFAULT_WORK_SETTINGS, ...(raw?.work ?? {}) },
+    work: { ...structuredClone(DEFAULT_WORK_SETTINGS), ...(raw?.work ?? {}) },
   }
 }
 

@@ -71,7 +71,9 @@ export const DEFAULT_WORK_SETTINGS: WorkSettings = {
   carryWarningDays: 3,
 }
 
+// DEFAULT_WORK_SETTINGS를 참조로 물면 두 상수가 같은 객체·같은 배열을 공유한다.
+// 소비자가 config.work.workdays를 건드리는 순간 모듈 전역 기본값이 오염된다.
 export const DEFAULT_CONFIG: Config = {
   projects: [],
-  work: DEFAULT_WORK_SETTINGS,
+  work: structuredClone(DEFAULT_WORK_SETTINGS),
 }

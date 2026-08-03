@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { MemoryStorage } from './memoryStorage'
 import { FixedClock } from './fixedClock'
+import { DEFAULT_CONFIG, DEFAULT_WORK_SETTINGS } from '../types'
 
 describe('MemoryStorage', () => {
   it('없는 키는 null을 준다', async () => {
@@ -59,5 +60,35 @@ describe('FixedClock', () => {
     const c = new FixedClock(new Date(2026, 7, 3))
     c.now().setDate(20)
     expect(c.now().getDate()).toBe(3)
+  })
+
+  it('생성자에 넘긴 Date를 바깥에서 바꿔도 내부 시각이 안 바뀐다', () => {
+    const d = new Date(2026, 7, 3)
+    const c = new FixedClock(d)
+    d.setDate(20)
+    expect(c.now().getDate()).toBe(3)
+  })
+
+  it('set에 넘긴 Date를 바깥에서 바꿔도 내부 시각이 안 바뀐다', () => {
+    const c = new FixedClock(new Date(2026, 7, 3))
+    const d = new Date(2026, 7, 5)
+    c.set(d)
+    d.setDate(20)
+    expect(c.now().getDate()).toBe(5)
+  })
+})
+
+describe('기본 설정 상수', () => {
+  it('DEFAULT_CONFIG.work가 DEFAULT_WORK_SETTINGS와 객체를 공유하지 않는다', () => {
+    expect(DEFAULT_CONFIG.work).not.toBe(DEFAULT_WORK_SETTINGS)
+  })
+
+  it('DEFAULT_CONFIG.work의 배열을 바꿔도 DEFAULT_WORK_SETTINGS가 안 바뀐다', () => {
+    DEFAULT_CONFIG.work.workdays.push(6)
+    try {
+      expect(DEFAULT_WORK_SETTINGS.workdays).toEqual([1, 2, 3, 4, 5])
+    } finally {
+      DEFAULT_CONFIG.work.workdays = [1, 2, 3, 4, 5]
+    }
   })
 })

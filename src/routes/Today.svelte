@@ -19,25 +19,41 @@
   const open = $derived(visible.filter((t) => isOpen(t) && !isOverdue(t, today)))
   const closed = $derived(visible.filter((t) => !isOpen(t)))
 
-  async function add(input: { title: string; projectId?: string; priority: 1 | 2 | 3 }) {
-    await tasks.add({ ...input, plannedDate: today })
+  let actionError = $state<string | null>(null)
+
+  // 상태 전이는 잘못된 전환에서 throw하고, 저장은 디스크 사정으로 실패할 수
+  // 있다. 모든 동작을 이 함수로 통과시켜, 실패가 unhandled rejection으로
+  // 조용히 사라지지 않고 화면에 뜨게 한다.
+  async function run(action: () => Promise<unknown>): Promise<void> {
+    try {
+      await action()
+      actionError = null
+    } catch (e) {
+      actionError = e instanceof Error ? e.message : String(e)
+    }
   }
 
-  async function toggle(task: Task) {
+  function add(input: { title: string; projectId?: string; priority: 1 | 2 | 3 }) {
+    return run(() => tasks.add({ ...input, plannedDate: today }))
+  }
+
+  function toggle(task: Task) {
     const now = getClock().now()
-    await tasks.update(task.id, (t) =>
-      isOpen(t) ? completeTask(t, now) : reopenTask(t, now),
+    return run(() =>
+      tasks.update(task.id, (t) =>
+        isOpen(t) ? completeTask(t, now) : reopenTask(t, now),
+      ),
     )
   }
 
-  async function start(task: Task) {
+  function start(task: Task) {
     const now = getClock().now()
-    await tasks.update(task.id, (t) => startTask(t, now))
+    return run(() => tasks.update(task.id, (t) => startTask(t, now)))
   }
 
-  async function remove(task: Task) {
-    if (!confirm(`'${task.title}'을(를) 삭제할까요?`)) return
-    await tasks.remove(task.id)
+  function remove(task: Task) {
+    if (!confirm(`'${task.title}'을(를) 삭제할까요?`)) return Promise.resolve()
+    return run(() => tasks.remove(task.id))
   }
 </script>
 
@@ -52,7 +68,9 @@
 
   <QuickAdd {config} onAdd={add} />
 
-  {#if tasks.error}
+  {#if actionError}
+    <p class="error">{actionError}</p>
+  {:else if tasks.error}
     <p class="error">저장에 실패했습니다: {tasks.error}</p>
   {/if}
 

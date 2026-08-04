@@ -11,12 +11,31 @@
   const config = createConfigStore(storage)
   const tasks = createTaskStore(storage, clock)
 
-  const today = toDateStr(clock.now())
+  // 상수가 아니라 상태다. 앱을 며칠씩 켜두는 것이 정상 사용이라
+  // 자정을 넘기면 이 값이 따라가야 한다. 고정해두면 화면이 어제에 머물고,
+  // 그 상태에서 추가한 업무가 어제 날짜로 저장된다.
+  let today = $state(toDateStr(clock.now()))
 
   let tab = $state<'today' | 'settings'>('today')
   let ready = $state(false)
   let loadError = $state<string | null>(null)
 
+  $effect(() => {
+    function sync() {
+      const now = toDateStr(clock.now())
+      if (now !== today) today = now
+    }
+    // 절전에서 깨어난 직후처럼 타이머가 밀린 경우를 위해 포커스에서도 확인한다
+    const timer = setInterval(sync, 60_000)
+    window.addEventListener('focus', sync)
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('focus', sync)
+    }
+  })
+
+  // today를 읽으므로 날짜가 바뀌면 다시 실행된다.
+  // 달을 넘긴 경우 새 달 파일을 읽어와야 하므로 이 재실행이 필요하다.
   $effect(() => {
     Promise.all([config.load(), tasks.loadAround(today)])
       .then(() => { ready = true })

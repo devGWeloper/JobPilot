@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Project } from '../lib/types'
   import type { ConfigStore } from '../lib/stores/config.svelte'
 
   let { config }: { config: ConfigStore } = $props()
@@ -7,21 +8,35 @@
   let newColor = $state('#4f7cff')
   let message = $state<string | null>(null)
 
-  async function add() {
+  // 저장은 실패할 수 있다. 모든 변경을 이 함수로 통과시켜, 실패가
+  // unhandled rejection으로 조용히 사라지지 않고 화면에 뜨게 한다.
+  async function run(action: () => Promise<unknown>): Promise<boolean> {
     try {
-      await config.addProject(newName, newColor)
-      newName = ''
+      await action()
       message = null
+      return true
     } catch (e) {
       message = e instanceof Error ? e.message : String(e)
+      return false
     }
+  }
+
+  async function add() {
+    const ok = await run(() => config.addProject(newName, newColor))
+    if (ok) newName = ''
+  }
+
+  async function rename(p: Project, el: HTMLInputElement) {
+    const ok = await run(() => config.renameProject(p.id, el.value))
+    // 실패했으면 저장되지 않은 텍스트가 입력칸에 남지 않게 되돌린다
+    if (!ok) el.value = p.name
   }
 
   async function remove(id: string, name: string) {
     if (!confirm(`'${name}' 프로젝트를 삭제할까요?\n이미 등록된 업무의 분류는 사라집니다.`)) {
       return
     }
-    await config.deleteProject(id)
+    await run(() => config.deleteProject(id))
   }
 </script>
 
@@ -54,14 +69,14 @@
           <input
             class="name"
             value={p.name}
-            onchange={(e) => config.renameProject(p.id, e.currentTarget.value)}
+            onchange={(e) => rename(p, e.currentTarget)}
             aria-label="프로젝트 이름"
           />
           <label>
             <input
               type="checkbox"
               checked={p.active}
-              onchange={(e) => config.setProjectActive(p.id, e.currentTarget.checked)}
+              onchange={(e) => run(() => config.setProjectActive(p.id, e.currentTarget.checked))}
             />
             사용
           </label>

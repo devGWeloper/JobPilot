@@ -130,4 +130,80 @@ describe('ConfigStore 프로젝트 관리', () => {
     expect(store.projectById('ghost')).toBeUndefined()
     expect(store.projectById(undefined)).toBeUndefined()
   })
+
+  it('이름 변경 시 다른 프로젝트와 중복되면 거부한다', async () => {
+    const { store } = await ready()
+    await store.addProject('A사', '#000000')
+    const b = await store.addProject('B사', '#111111')
+    await expect(store.renameProject(b.id, 'A사')).rejects.toThrow()
+    expect(store.config.projects[1]!.name).toBe('B사')
+  })
+
+  it('자기 이름 그대로 바꾸는 것은 허용한다', async () => {
+    const { store } = await ready()
+    const p = await store.addProject('A사', '#000000')
+    await store.renameProject(p.id, 'A사')
+    expect(store.config.projects[0]!.name).toBe('A사')
+  })
+})
+
+/** 저장이 실패하는 상황을 만들기 위한 저장소 */
+class FailingStorage extends MemoryStorage {
+  failNextSave = false
+
+  override async save<T>(key: string, value: T): Promise<void> {
+    if (this.failNextSave) {
+      this.failNextSave = false
+      throw new Error('디스크에 쓸 수 없습니다')
+    }
+    await super.save(key, value)
+  }
+}
+
+describe('ConfigStore 저장 실패 처리', () => {
+  async function ready() {
+    const storage = new FailingStorage()
+    const store = createConfigStore(storage)
+    await store.load()
+    return { store, storage }
+  }
+
+  it('추가가 저장에 실패하면 화면 상태를 되돌린다', async () => {
+    const { store, storage } = await ready()
+    storage.failNextSave = true
+    await expect(store.addProject('A사', '#000000')).rejects.toThrow()
+    expect(store.config.projects).toEqual([])
+  })
+
+  it('이름 변경이 저장에 실패하면 이전 이름으로 되돌린다', async () => {
+    const { store, storage } = await ready()
+    const p = await store.addProject('A사', '#000000')
+    storage.failNextSave = true
+    await expect(store.renameProject(p.id, 'B사')).rejects.toThrow()
+    expect(store.config.projects[0]!.name).toBe('A사')
+  })
+
+  it('삭제가 저장에 실패하면 프로젝트가 되살아난다', async () => {
+    const { store, storage } = await ready()
+    const p = await store.addProject('A사', '#000000')
+    storage.failNextSave = true
+    await expect(store.deleteProject(p.id)).rejects.toThrow()
+    expect(store.config.projects.map((x) => x.name)).toEqual(['A사'])
+  })
+
+  it('저장 실패를 error에 남긴다', async () => {
+    const { store, storage } = await ready()
+    storage.failNextSave = true
+    await expect(store.addProject('A사', '#000000')).rejects.toThrow()
+    expect(store.error).toContain('디스크에 쓸 수 없습니다')
+  })
+
+  it('되돌린 뒤 다시 시도하면 성공한다', async () => {
+    const { store, storage } = await ready()
+    storage.failNextSave = true
+    await expect(store.addProject('A사', '#000000')).rejects.toThrow()
+    await store.addProject('A사', '#000000')
+    expect(store.config.projects.map((x) => x.name)).toEqual(['A사'])
+    expect(store.error).toBeNull()
+  })
 })

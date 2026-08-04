@@ -3608,25 +3608,41 @@ git commit -m "feat: add task store with month-partitioned persistence"
   const open = $derived(visible.filter((t) => isOpen(t) && !isOverdue(t, today)))
   const closed = $derived(visible.filter((t) => !isOpen(t)))
 
-  async function add(input: { title: string; projectId?: string; priority: 1 | 2 | 3 }) {
-    await tasks.add({ ...input, plannedDate: today })
+  let actionError = $state<string | null>(null)
+
+  // 상태 전이는 잘못된 전환에서 throw하고, 저장은 디스크 사정으로 실패할 수
+  // 있다. 모든 동작을 이 함수로 통과시켜, 실패가 unhandled rejection으로
+  // 조용히 사라지지 않고 화면에 뜨게 한다.
+  async function run(action: () => Promise<unknown>): Promise<void> {
+    try {
+      await action()
+      actionError = null
+    } catch (e) {
+      actionError = e instanceof Error ? e.message : String(e)
+    }
   }
 
-  async function toggle(task: Task) {
+  function add(input: { title: string; projectId?: string; priority: 1 | 2 | 3 }) {
+    return run(() => tasks.add({ ...input, plannedDate: today }))
+  }
+
+  function toggle(task: Task) {
     const now = getClock().now()
-    await tasks.update(task.id, (t) =>
-      isOpen(t) ? completeTask(t, now) : reopenTask(t, now),
+    return run(() =>
+      tasks.update(task.id, (t) =>
+        isOpen(t) ? completeTask(t, now) : reopenTask(t, now),
+      ),
     )
   }
 
-  async function start(task: Task) {
+  function start(task: Task) {
     const now = getClock().now()
-    await tasks.update(task.id, (t) => startTask(t, now))
+    return run(() => tasks.update(task.id, (t) => startTask(t, now)))
   }
 
-  async function remove(task: Task) {
-    if (!confirm(`'${task.title}'을(를) 삭제할까요?`)) return
-    await tasks.remove(task.id)
+  function remove(task: Task) {
+    if (!confirm(`'${task.title}'을(를) 삭제할까요?`)) return Promise.resolve()
+    return run(() => tasks.remove(task.id))
   }
 </script>
 
@@ -3641,7 +3657,9 @@ git commit -m "feat: add task store with month-partitioned persistence"
 
   <QuickAdd {config} onAdd={add} />
 
-  {#if tasks.error}
+  {#if actionError}
+    <p class="error">{actionError}</p>
+  {:else if tasks.error}
     <p class="error">저장에 실패했습니다: {tasks.error}</p>
   {/if}
 
@@ -3711,12 +3729,31 @@ git commit -m "feat: add task store with month-partitioned persistence"
   const config = createConfigStore(storage)
   const tasks = createTaskStore(storage, clock)
 
-  const today = toDateStr(clock.now())
+  // 상수가 아니라 상태다. 앱을 며칠씩 켜두는 것이 정상 사용이라
+  // 자정을 넘기면 이 값이 따라가야 한다. 고정해두면 화면이 어제에 머물고,
+  // 그 상태에서 추가한 업무가 어제 날짜로 저장된다.
+  let today = $state(toDateStr(clock.now()))
 
   let tab = $state<'today' | 'settings'>('today')
   let ready = $state(false)
   let loadError = $state<string | null>(null)
 
+  $effect(() => {
+    function sync() {
+      const now = toDateStr(clock.now())
+      if (now !== today) today = now
+    }
+    // 절전에서 깨어난 직후처럼 타이머가 밀린 경우를 위해 포커스에서도 확인한다
+    const timer = setInterval(sync, 60_000)
+    window.addEventListener('focus', sync)
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('focus', sync)
+    }
+  })
+
+  // today를 읽으므로 날짜가 바뀌면 다시 실행된다.
+  // 달을 넘긴 경우 새 달 파일을 읽어와야 하므로 이 재실행이 필요하다.
   $effect(() => {
     Promise.all([config.load(), tasks.loadAround(today)])
       .then(() => { ready = true })

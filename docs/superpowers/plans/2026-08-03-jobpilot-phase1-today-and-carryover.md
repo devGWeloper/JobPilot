@@ -2974,7 +2974,12 @@ describe('TaskStore.loadAround', () => {
 })
 
 describe('TaskStore 미로드 월 보호', () => {
-  it('안 읽은 달로 이월해도 그 달의 기존 업무를 지우지 않는다', async () => {
+  /**
+   * 읽지 않은 달에 그냥 쓰면 그 파일을 메모리 내용으로 통째로 덮어써
+   * 이미 저장돼 있던 업무가 사라진다. 쓰기 경로마다 #ensureLoaded가
+   * 걸려 있어야 하고, 각 경로에 그 보호를 검증하는 테스트가 있어야 한다.
+   */
+  function seedDecember() {
     const existing: TaskFile = {
       schemaVersion: SCHEMA_VERSION,
       tasks: [
@@ -2985,7 +2990,11 @@ describe('TaskStore 미로드 월 보호', () => {
         },
       ],
     }
-    const { store, storage } = setup({ [taskKey('2026-12')]: existing })
+    return setup({ [taskKey('2026-12')]: existing })
+  }
+
+  it('update로 안 읽은 달에 옮겨도 그 달의 기존 업무를 지우지 않는다', async () => {
+    const { store, storage } = seedDecember()
     await store.loadAround(TODAY)
     const t = await store.add({ title: '옮길 것', plannedDate: TODAY })
 
@@ -2993,6 +3002,29 @@ describe('TaskStore 미로드 월 보호', () => {
 
     const saved = (await storage.load<TaskFile>(taskKey('2026-12')))!
     expect(saved.tasks.map((x) => x.id).sort()).toEqual(['dec', t.id].sort())
+  })
+
+  it('wrapUp으로 안 읽은 달에 이월해도 그 달의 기존 업무를 지우지 않는다', async () => {
+    // wrapUp이 carry 대상 달을 미리 읽지 않으면 이 테스트가 깨진다.
+    // 12월은 loadAround(2026-08-03)의 앞뒤 달 범위 밖이라 로드되지 않는다.
+    const { store, storage } = seedDecember()
+    await store.loadAround(TODAY)
+    const t = await store.add({ title: '옮길 것', plannedDate: TODAY })
+
+    await store.wrapUp([{ taskId: t.id, kind: 'carry', toDate: '2026-12-01' }])
+
+    const saved = (await storage.load<TaskFile>(taskKey('2026-12')))!
+    expect(saved.tasks.map((x) => x.id).sort()).toEqual(['dec', t.id].sort())
+  })
+
+  it('wrapUp 이월 후에도 12월 기존 업무가 메모리에 남아 있다', async () => {
+    const { store } = seedDecember()
+    await store.loadAround(TODAY)
+    const t = await store.add({ title: '옮길 것', plannedDate: TODAY })
+
+    await store.wrapUp([{ taskId: t.id, kind: 'carry', toDate: '2026-12-01' }])
+
+    expect(store.all.map((x) => x.id).sort()).toEqual(['dec', t.id].sort())
   })
 })
 

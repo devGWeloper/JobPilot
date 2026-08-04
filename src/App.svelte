@@ -1,17 +1,24 @@
 <script lang="ts">
-  import { getStorage } from './lib/stores/context'
+  import { getStorage, getClock } from './lib/stores/context'
   import { createConfigStore } from './lib/stores/config.svelte'
+  import { createTaskStore } from './lib/stores/tasks.svelte'
+  import { toDateStr } from './lib/core/dates'
+  import Today from './routes/Today.svelte'
   import Settings from './routes/Settings.svelte'
 
-  const config = createConfigStore(getStorage())
+  const storage = getStorage()
+  const clock = getClock()
+  const config = createConfigStore(storage)
+  const tasks = createTaskStore(storage, clock)
 
-  let tab = $state<'today' | 'settings'>('settings')
+  const today = toDateStr(clock.now())
+
+  let tab = $state<'today' | 'settings'>('today')
   let ready = $state(false)
   let loadError = $state<string | null>(null)
 
   $effect(() => {
-    config
-      .load()
+    Promise.all([config.load(), tasks.loadAround(today)])
       .then(() => { ready = true })
       .catch((e) => { loadError = e instanceof Error ? e.message : String(e) })
   })
@@ -26,10 +33,10 @@
   <p class="fatal">데이터를 불러오지 못했습니다: {loadError}</p>
 {:else if !ready}
   <p class="loading">불러오는 중…</p>
-{:else if tab === 'settings'}
-  <Settings {config} />
+{:else if tab === 'today'}
+  <Today {tasks} {config} {today} />
 {:else}
-  <p class="loading">오늘 화면은 다음 단계에서 만듭니다.</p>
+  <Settings {config} />
 {/if}
 
 <style>

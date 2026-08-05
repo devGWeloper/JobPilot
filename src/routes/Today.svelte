@@ -55,6 +55,12 @@
     if (!confirm(`'${task.title}'을(를) 삭제할까요?`)) return Promise.resolve()
     return run(() => tasks.remove(task.id))
   }
+
+  import DailyWrapUp from '../lib/components/DailyWrapUp.svelte'
+  import { pendingForWrapUp } from '../lib/core/daily'
+
+  let wrapUpOpen = $state(false)
+  const pendingCount = $derived(pendingForWrapUp(tasks.all, today).length)
 </script>
 
 <div class="page">
@@ -110,6 +116,16 @@
       onDelete={remove}
     />
   {/if}
+
+  <div class="wrapup-bar">
+    <button class="wrapup" onclick={() => (wrapUpOpen = true)}>
+      하루 마감 {#if pendingCount > 0}({pendingCount}건){/if}
+    </button>
+  </div>
+
+  {#if wrapUpOpen}
+    <DailyWrapUp {tasks} {config} {today} onClose={() => (wrapUpOpen = false)} />
+  {/if}
 </div>
 
 <style>
@@ -119,4 +135,6 @@
   .summary { margin: 0.2rem 0 0; opacity: 0.7; font-size: 0.85rem; }
   .warn { color: #a86400; }
   .error { color: #c0392b; }
+  .wrapup-bar { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid rgba(128,128,128,0.25); }
+  .wrapup { padding: 0.6rem 1.2rem; font-weight: 600; cursor: pointer; border-radius: 6px; }
 </style>

@@ -7,6 +7,8 @@
   import { getClock } from '../lib/stores/context'
   import QuickAdd from '../lib/components/QuickAdd.svelte'
   import TaskList from '../lib/components/TaskList.svelte'
+  import DailyWrapUp from '../lib/components/DailyWrapUp.svelte'
+  import { pendingForWrapUp } from '../lib/core/daily'
 
   let {
     tasks,
@@ -55,9 +57,6 @@
     if (!confirm(`'${task.title}'을(를) 삭제할까요?`)) return Promise.resolve()
     return run(() => tasks.remove(task.id))
   }
-
-  import DailyWrapUp from '../lib/components/DailyWrapUp.svelte'
-  import { pendingForWrapUp } from '../lib/core/daily'
 
   let wrapUpOpen = $state(false)
   const pendingCount = $derived(pendingForWrapUp(tasks.all, today).length)

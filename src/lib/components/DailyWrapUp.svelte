@@ -21,7 +21,12 @@
   type Choice = 'complete' | 'carry' | 'drop' | 'keep'
 
   const pending = $derived(pendingForWrapUp(tasks.all, today))
-  const tomorrow = addDays(today, 1)
+
+  // $derived여야 한다. today는 자정을 넘기면 실제로 바뀌는데(App.svelte 참고)
+  // 이 시트는 열린 채로 살아 있을 수 있다. 평범한 const로 두면 tomorrow가
+  // 굳어서, 이월 대상이 이미 지나간 날짜가 되고 carryTask가 계속 거부한다.
+  // 컴포넌트가 리마운트되지 않으므로 다시 시도해도 빠져나오지 못한다.
+  const tomorrow = $derived(addDays(today, 1))
 
   // 기본 제안은 전부 내일로 이월
   let choices = $state<Record<string, Choice>>({})
@@ -33,6 +38,15 @@
     for (const t of pending) {
       if (!(t.id in choices)) choices[t.id] = 'carry'
     }
+  })
+
+  // Escape로 닫히지 않으면 마우스 없이는 시트를 빠져나갈 수 없다
+  $effect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
   })
 
   function setAll(choice: Choice) {
@@ -68,7 +82,7 @@
 
 <div class="backdrop" role="presentation" onclick={onClose}></div>
 
-<div class="sheet" role="dialog" aria-label="하루 마감">
+<div class="sheet" role="dialog" aria-modal="true" aria-label="하루 마감">
   <header>
     <h2>하루 마감</h2>
     <p>정리할 업무 {pending.length}건. 기본은 내일({tomorrow})로 이월입니다.</p>

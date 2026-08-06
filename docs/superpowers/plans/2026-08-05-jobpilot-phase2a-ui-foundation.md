@@ -164,6 +164,11 @@ export function cn(...inputs: ClassValue[]): string {
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
+  /* 네이티브 위젯(체크박스, input[type=color], 스크롤바)은 CSS가 아니라
+     이 값을 보고 그려진다. 선언하지 않으면 .dark를 붙여도 브라우저가
+     계속 밝게 그려서, 어두운 배경 위에 흰 체크박스가 뜬다. */
+  color-scheme: light;
+
   --background: hsl(0 0% 100%);
   --foreground: hsl(222 47% 11%);
   --card: hsl(0 0% 100%);
@@ -180,8 +185,10 @@ export function cn(...inputs: ClassValue[]): string {
   --accent-foreground: hsl(222 47% 11%);
   --destructive: hsl(0 72% 45%);
   --destructive-foreground: hsl(210 40% 98%);
-  --warning: hsl(38 92% 40%);
-  --warning-foreground: hsl(48 96% 95%);
+  /* 밀린 업무 배지는 이 색을 흰 배경 위의 글자로 쓴다.
+     명도를 40%로 두면 대비가 3:1대라 작은 글자에서 흐리게 읽힌다. */
+  --warning: hsl(38 95% 33%);
+  --warning-foreground: hsl(48 96% 97%);
   --border: hsl(214 32% 91%);
   --input: hsl(214 32% 91%);
   --ring: hsl(222 47% 31%);
@@ -189,6 +196,8 @@ export function cn(...inputs: ClassValue[]): string {
 }
 
 .dark {
+  color-scheme: dark;
+
   --background: hsl(222 47% 9%);
   --foreground: hsl(210 40% 96%);
   --card: hsl(222 40% 13%);

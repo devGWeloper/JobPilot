@@ -85,8 +85,11 @@ JobPilot/
 
 **Files:**
 - Modify: `package.json`, `vite.config.ts`
-- Create: `components.json`, `src/lib/utils.ts`
+- Create: `src/lib/utils.ts`
 - Replace: `src/app.css`
+
+> `components.json`은 이 태스크에서 만들지 않는다. Task 2의 shadcn-svelte CLI가
+> 생성한다.
 
 **Interfaces:**
 - Consumes: 없음

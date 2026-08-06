@@ -73,15 +73,19 @@ describe('applyWrapUp', () => {
   })
 
   it('keep 결정은 아무것도 바꾸지 않는다', () => {
+    // toBe여야 한다: TaskStore.wrapUp이 next !== prev 참조 비교로 "바뀐 달"을
+    // 계산한다(applyWrapUp 문서 주석 참고). 값만 같은 복사본을 돌려줘도 이
+    // toEqual은 통과해 그 회귀를 잡지 못한다.
     const tasks = [make('a', '2026-08-03')]
     const out = applyWrapUp(tasks, [{ taskId: 'a', kind: 'keep' }], AT)
-    expect(out[0]).toEqual(tasks[0])
+    expect(out[0]).toBe(tasks[0])
   })
 
   it('결정이 없는 업무는 그대로 둔다', () => {
+    // toBe인 이유는 위 'keep' 테스트와 같다.
     const tasks = [make('a', '2026-08-03'), make('b', '2026-08-03')]
     const out = applyWrapUp(tasks, [{ taskId: 'a', kind: 'complete' }], AT)
-    expect(out[1]).toEqual(tasks[1])
+    expect(out[1]).toBe(tasks[1])
   })
 
   it('여러 결정을 한 번에 적용한다', () => {

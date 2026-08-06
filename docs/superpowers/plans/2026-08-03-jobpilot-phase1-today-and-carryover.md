@@ -1397,15 +1397,19 @@ describe('applyWrapUp', () => {
   })
 
   it('keep 결정은 아무것도 바꾸지 않는다', () => {
+    // toBe여야 한다 (최종 리뷰 Minor 갱신): TaskStore.wrapUp이 next !== prev
+    // 참조 비교로 "바뀐 달"을 계산한다(applyWrapUp 문서 주석 참고). 값만 같은
+    // 복사본을 돌려줘도 toEqual은 통과해 그 회귀를 잡지 못한다.
     const tasks = [make('a', '2026-08-03')]
     const out = applyWrapUp(tasks, [{ taskId: 'a', kind: 'keep' }], AT)
-    expect(out[0]).toEqual(tasks[0])
+    expect(out[0]).toBe(tasks[0])
   })
 
   it('결정이 없는 업무는 그대로 둔다', () => {
+    // toBe인 이유는 위 'keep' 테스트와 같다.
     const tasks = [make('a', '2026-08-03'), make('b', '2026-08-03')]
     const out = applyWrapUp(tasks, [{ taskId: 'a', kind: 'complete' }], AT)
-    expect(out[1]).toEqual(tasks[1])
+    expect(out[1]).toBe(tasks[1])
   })
 
   it('여러 결정을 한 번에 적용한다', () => {
@@ -1484,6 +1488,18 @@ export function defaultDecisions(tasks: Task[], today: DateStr): WrapUpDecision[
   }))
 }
 
+/**
+ * 결정에 따라 업무 목록을 새로 만든다. 원본 배열과 그 안의 항목은 바꾸지 않는다.
+ *
+ * 참조 동일성 계약 (최종 리뷰 Minor 갱신에서 문서화): 'keep' 결정을 받은
+ * 업무와 아예 결정이 없는 업무는 입력과 "같은 객체 참조"로 돌려준다(값만 같은
+ * 복사본이 아니다). 이는 문서화되지 않으면 깨지기 쉬운 계약이지만 실제로
+ * 소비되고 있다 — `TaskStore.wrapUp`이 `next !== prev` 참조 비교만으로 "이번
+ * 마감에서 실제로 바뀐 달이 어디인가"를 계산해 그 달만 저장한다. 이 함수가
+ * keep/무결정 분기에서 `{ ...task }`처럼 얕은 복사본을 돌려주도록 바뀌면, 그
+ * 비교가 항상 참이 되어 매번 로드된 모든 달을 다시 쓰게 된다 — 테스트는
+ * `toEqual`로는 통과하고 `toBe`로만 잡힌다.
+ */
 export function applyWrapUp(
   tasks: Task[],
   decisions: WrapUpDecision[],
@@ -2126,6 +2142,49 @@ git commit -m "feat: add atomic JSON storage with quarantine and daily backups"
 
 ---
 
+### Task 5 재개 시 반드시 완료할 인수인계 항목
+
+> Rust 툴체인이 이 개발 머신에 없어 Task 5는 **DEFERRED** 상태로 최종 리뷰까지
+> 남았다(`src-tauri/`에 untracked 산출물만 존재 — app-icon.png, icons/,
+> Cargo.toml, build.rs, tauri.conf.json, src/{main.rs,lib.rs,storage.rs(`todo!()`
+> 본문)}. 파일 재작성은 불필요, Step 3부터 재개하면 된다). 아래 항목은
+> `.superpowers/sdd/2026-08-03-jobpilot-phase1-today-and-carryover/progress.md`의
+> Task 6 RULING에서 옮겨온 것이다. 그 디렉터리는 `.gitignore`로 추적되지
+> 않으므로, 이 계획 문서가 이 항목들의 유일한 기록이다. Rust 설치 후 Task 5를
+> 재개할 때 아래를 모두 완료해야 한다 — 잊으면 결함이 그대로 출시된다.
+
+- [ ] **tauriStorage.ts 손상 파일 처리 결함 수정** — Task 6에서 짠
+  `src/lib/adapters/tauriStorage.ts`의 `load()`가 아래 두 결함을 안고 있다.
+  Rust가 없어 실행 검증이 불가능해 지금 고치면 눈감고 짜는 셈이라 미뤄뒀다.
+  1. [ ] `catch { ... }`가 변수를 받지 않아 원본 `JSON.parse` 실패 원인이
+     버려진다. `catch (e)`로 바꿔 원인을 `StorageCorruptError`에 실어 보내거나
+     최소한 로깅한다.
+  2. [ ] `storage_quarantine` invoke 호출이 무방비 상태다. 격리 자체가
+     실패하면 그 예외가 그대로 전파되어 일반 IPC 오류가 되고, 호출부의
+     `instanceof StorageCorruptError` 분기가 걸리지 않는다. 이 invoke를
+     `try/catch`로 감싸, 격리 실패도 `StorageCorruptError` 계열로 던지도록
+     고친다.
+  3. [ ] 위 두 수정을 반영해 아래 Task 6 "Step 1: Tauri 어댑터 작성"의
+     코드 블록도 갱신한다 — 이 계획 문서 자체가 결함 있는 버전을 재생산하는
+     원본으로 남아 있으면 다음에 또 그대로 베껴 짜게 된다.
+  4. [ ] `data/` 안의 JSON 파일 하나를 실제로 손상시켜(예: 중괄호 하나 삭제)
+     두 경로를 모두 실행 검증한다: (a) 파싱 실패 → 격리 성공 → 정상적으로
+     `StorageCorruptError`가 올라오는 경로, (b) 격리 자체가 실패하는 경로.
+- [ ] **Task 6 Step 4 — IPC 왕복 스모크 테스트** — `npm run tauri dev`로 창을
+  띄우고 개발자 도구 콘솔에서 `storage_save` → `storage_load` 왕복이 저장한
+  값을 그대로 돌려주는지 확인한다. Rust 부재로 의도적으로 연기됐다(아래 Task 6
+  Step 4 참고). Task 5 재개 시 함께 수행한다.
+- [ ] **트레이 최소화 상태에서 날짜 롤오버 실측** — `src/App.svelte`의
+  `setInterval(60_000)` + `window.addEventListener('focus', ...)` 기반 날짜
+  롤오버(Task 9·10에서 today를 반응형 `$state`/`$derived`로 고친 바로 그
+  메커니즘)가 Tauri 트레이로 창을 숨긴 상태에서도 실제로 발화하는지 확인한다.
+  트레이로 최소화된 WebView가 타이머나 포커스 이벤트를 억제·지연시키면,
+  Task 9·10에서 어렵게 고친 "자정을 넘겨도 화면이 어제에 머무는" 버그
+  계열이 조용히 재발할 수 있다. 최소화 상태로 자정을 넘긴 뒤 창을 복원해
+  today와 업무 목록이 맞는지로 확인한다.
+
+---
+
 ## Task 6: Tauri 저장 어댑터와 포트 조립
 
 **Files:**
@@ -2516,6 +2575,35 @@ import { newId } from '../core/ids'
 
 export const CONFIG_KEY = 'config'
 
+/**
+ * 읽어온 파일의 봉투를 검증한다. 실패하면 조용히 기본값으로 대체하지 않고 던진다.
+ *
+ * schemaVersion을 확인하지 않으면, 미래 버전이 쓴 파일(예: 7단계의 profile/ai
+ * 필드를 담은 v2)을 이 버전이 읽을 수 있는 것만 골라 읽고 첫 저장에서
+ * `schemaVersion: 1`로 통째로 덮어써 나머지 필드를 영구히 없앤다.
+ * `config`가 객체인지도 확인한다 — JSON 파싱은 되지만 봉투 구조가 잘못된
+ * 파일(예: `config` 필드 자체가 없거나 배열인 경우)은 지금까지 빈 설정으로
+ * 읽혀 그대로 덮어써졌다.
+ *
+ * `file`이 `null`인 경우(아직 한 번도 저장한 적 없음)는 정상적인 첫 실행
+ * 경로이므로 검증 대상이 아니다.
+ *
+ * (최종 리뷰 Fix 3에서 추가. 처음 계획할 때는 없었다.)
+ */
+function assertValidConfigFile(key: string, file: ConfigFile | null): void {
+  if (file === null) return
+  if (file.schemaVersion !== SCHEMA_VERSION) {
+    throw new Error(
+      `${key}의 스키마 버전이 맞지 않습니다 (파일: ${String(file.schemaVersion)}, ` +
+        `이 앱이 지원하는 버전: ${SCHEMA_VERSION}). 다른 버전의 JobPilot이 저장한 ` +
+        `파일로 보입니다. 데이터 손실을 막기 위해 읽기를 중단합니다.`,
+    )
+  }
+  if (typeof file.config !== 'object' || file.config === null || Array.isArray(file.config)) {
+    throw new Error(`${key} 파일의 구조가 올바르지 않습니다: config가 비어 있거나 객체가 아닙니다`)
+  }
+}
+
 export class ConfigStore {
   #config = $state<Config>(structuredClone(DEFAULT_CONFIG))
   #loaded = $state(false)
@@ -2537,6 +2625,7 @@ export class ConfigStore {
 
   async load(): Promise<void> {
     const file = await this.storage.load<ConfigFile>(CONFIG_KEY)
+    assertValidConfigFile(CONFIG_KEY, file)
     this.#config = file ? normalize(file.config) : structuredClone(DEFAULT_CONFIG)
     this.#loaded = true
   }
@@ -3169,6 +3258,13 @@ Expected: FAIL — `Failed to resolve import "./tasks.svelte"`
 
 `src/lib/stores/tasks.svelte.ts`:
 
+> **갱신 (최종 리뷰 Fix 1 + Fix 3):** 아래는 최종 전체 리뷰에서 발견된 두 문제를
+> 반영한 최신 버전이다. 처음 이 태스크를 구현했을 때는 `#commit`/롤백이 없었고
+> (I1 — ConfigStore와 달리 저장 실패 시 메모리를 되돌리지 못해 하루 마감 재시도가
+> 막혔다), `update`의 달 경계 이동이 제거를 추가보다 먼저 써서 부분 실패 시
+> 업무가 양쪽 파일 어디에도 없어질 수 있었으며, schemaVersion·구조 검증도
+> 없었다(I3). 아래 코드가 그 세 가지를 모두 고친 버전이다.
+
 ```ts
 import type { Storage } from '../ports/storage'
 import type { Clock } from '../ports/clock'
@@ -3179,6 +3275,32 @@ import { applyWrapUp, type WrapUpDecision } from '../core/daily'
 
 export function taskKey(month: string): string {
   return `tasks/${month}`
+}
+
+/**
+ * 읽어온 파일의 봉투를 검증한다. 실패하면 조용히 빈 배열로 대체하지 않고 던진다.
+ *
+ * schemaVersion을 확인하지 않으면, 미래 버전이 쓴 파일을 이 버전이 빈 것으로
+ * 읽어버리고 다음 저장에서 통째로 덮어써 v2 전용 필드가 영구히 사라진다.
+ * `tasks`가 배열인지도 확인한다 — JSON 파싱은 되지만 구조가 잘못된 파일(예:
+ * 수동 편집으로 `tasks: {}`가 된 경우)은 파싱 실패 격리 경로를 타지 않아
+ * 지금까지는 빈 달로 읽혀 그대로 덮어써졌다.
+ *
+ * `file`이 `null`인 경우(아직 한 번도 저장한 적 없음)는 정상적인 첫 실행
+ * 경로이므로 검증 대상이 아니다.
+ */
+function assertValidTaskFile(key: string, file: TaskFile | null): void {
+  if (file === null) return
+  if (file.schemaVersion !== SCHEMA_VERSION) {
+    throw new Error(
+      `${key}의 스키마 버전이 맞지 않습니다 (파일: ${String(file.schemaVersion)}, ` +
+        `이 앱이 지원하는 버전: ${SCHEMA_VERSION}). 다른 버전의 JobPilot이 저장한 ` +
+        `파일로 보입니다. 데이터 손실을 막기 위해 읽기를 중단합니다.`,
+    )
+  }
+  if (!Array.isArray(file.tasks)) {
+    throw new Error(`${key} 파일의 구조가 올바르지 않습니다: tasks가 배열이 아닙니다`)
+  }
 }
 
 export class TaskStore {
@@ -3217,6 +3339,7 @@ export class TaskStore {
 
     for (const m of [prev, cur, next]) {
       const file = await this.storage.load<TaskFile>(taskKey(m))
+      assertValidTaskFile(taskKey(m), file)
       this.#months[m] = file?.tasks ?? []
     }
   }
@@ -3225,8 +3348,10 @@ export class TaskStore {
     const task = createTask(input, this.clock.now())
     const m = monthKey(task.plannedDate)
     await this.#ensureLoaded(m)
-    this.#months[m]!.push(task)
-    await this.#persist([m])
+    await this.#commit(() => {
+      this.#months[m]!.push(task)
+      return [m]
+    })
     return task
   }
 
@@ -3237,22 +3362,35 @@ export class TaskStore {
     const toMonth = monthKey(next.plannedDate)
 
     if (fromMonth === toMonth) {
-      this.#months[fromMonth]![found.index] = next
-      await this.#persist([fromMonth])
+      await this.#commit(() => {
+        this.#months[fromMonth]![found.index] = next
+        return [fromMonth]
+      })
       return
     }
 
     // 계획일이 다른 달로 옮겨졌다. 원래 파일에서 빼고 새 파일에 넣는다.
+    // ensureLoaded는 #commit의 스냅샷보다 먼저 실행해야 한다. 그래야 이
+    // 과정에서 새로 로드된 달이 롤백 이후에도 "로드됨" 상태로 남는다.
     await this.#ensureLoaded(toMonth)
-    this.#months[fromMonth] = this.#months[fromMonth]!.filter((t) => t.id !== id)
-    this.#months[toMonth]!.push(next)
-    await this.#persist([fromMonth, toMonth])
+    await this.#commit(() => {
+      this.#months[fromMonth] = this.#months[fromMonth]!.filter((t) => t.id !== id)
+      this.#months[toMonth]!.push(next)
+      // toMonth(추가)를 fromMonth(제거)보다 먼저 쓴다. #persist는 넘겨받은
+      // 순서대로 저장하므로, 제거를 먼저 쓴 뒤 추가 쓰기가 실패하면 업무가
+      // 두 파일 어디에도 없는 상태가 된다. 추가를 먼저 쓰면 실패 시 업무가
+      // 양쪽에 중복되는데, 중복은 사람이 알아채고 정리할 수 있지만 소실은
+      // 되돌릴 방법이 없다.
+      return [toMonth, fromMonth]
+    })
   }
 
   async remove(id: string): Promise<void> {
     const found = this.#locate(id)
-    this.#months[found.month] = this.#months[found.month]!.filter((t) => t.id !== id)
-    await this.#persist([found.month])
+    await this.#commit(() => {
+      this.#months[found.month] = this.#months[found.month]!.filter((t) => t.id !== id)
+      return [found.month]
+    })
   }
 
   /** 그날 볼 목록: 그날 계획된 것 + 그날까지 밀린 열린 것 */
@@ -3265,42 +3403,49 @@ export class TaskStore {
 
   async wrapUp(decisions: WrapUpDecision[]): Promise<void> {
     // 이월 대상 달을 먼저 읽어둔다. 안 읽은 달에 쓰면 그 파일을 덮어써버린다.
-    // applyWrapUp 호출 전에 해야 한다. 뒤에 읽으면 새로 들어온 업무가
-    // 아래 재구성 과정에서 빠진다.
+    // #commit의 스냅샷보다, 그리고 applyWrapUp 호출보다 먼저 해야 한다.
+    // 스냅샷보다 늦으면 롤백 시 이번에 로드한 달이 "로드 안 됨"으로 되돌아가고,
+    // applyWrapUp보다 늦으면 새로 들어온 업무가 아래 재구성 과정에서 빠진다.
     for (const d of decisions) {
       if (d.kind === 'carry') await this.#ensureLoaded(monthKey(d.toDate))
     }
 
-    const before = this.all
-    const after = applyWrapUp(before, decisions, this.clock.now())
+    await this.#commit(() => {
+      const before = this.all
+      const after = applyWrapUp(before, decisions, this.clock.now())
 
-    const touched = new Set<string>()
-    const byMonth: Record<string, Task[]> = {}
+      const touched = new Set<string>()
+      const byMonth: Record<string, Task[]> = {}
 
-    // 기존에 로드된 달은 일단 비워두고 다시 채운다
-    for (const m of Object.keys(this.#months)) byMonth[m] = []
+      // 기존에 로드된 달은 일단 비워두고 다시 채운다
+      for (const m of Object.keys(this.#months)) byMonth[m] = []
 
-    for (let i = 0; i < after.length; i++) {
-      const next = after[i]!
-      const prev = before[i]!
-      const m = monthKey(next.plannedDate)
-      if (!byMonth[m]) byMonth[m] = []
-      byMonth[m]!.push(next)
+      for (let i = 0; i < after.length; i++) {
+        const next = after[i]!
+        const prev = before[i]!
+        const m = monthKey(next.plannedDate)
+        if (!byMonth[m]) byMonth[m] = []
+        byMonth[m]!.push(next)
 
-      if (next !== prev) {
-        touched.add(m)
-        touched.add(monthKey(prev.plannedDate))
+        // applyWrapUp은 바뀌지 않은 업무를 원본과 같은 참조로 돌려준다(그 함수의
+        // 문서 주석 참고). 그 계약 덕에 여기서 값 비교 없이 참조 비교만으로
+        // "이 달에 실제로 변경이 있었는가"를 판단할 수 있다.
+        if (next !== prev) {
+          touched.add(m)
+          touched.add(monthKey(prev.plannedDate))
+        }
       }
-    }
 
-    this.#months = byMonth
-    await this.#persist([...touched])
+      this.#months = byMonth
+      return [...touched]
+    })
   }
 
   /** 아직 안 읽은 달이면 파일에서 읽어온다. 없으면 빈 목록으로 시작한다. */
   async #ensureLoaded(month: string): Promise<void> {
     if (this.#months[month]) return
     const file = await this.storage.load<TaskFile>(taskKey(month))
+    assertValidTaskFile(taskKey(month), file)
     this.#months[month] = file?.tasks ?? []
   }
 
@@ -3310,6 +3455,25 @@ export class TaskStore {
       if (index >= 0) return { month, index, task: tasks[index]! }
     }
     throw new Error(`존재하지 않는 업무입니다: ${id}`)
+  }
+
+  /**
+   * 변경을 적용하고 저장한다. 저장이 실패하면 메모리 상태를 되돌린다.
+   *
+   * 되돌리지 않으면 디스크에 없는 상태(예: 이월된 업무)가 화면에만 남는다.
+   * 이때 하루 마감 시트의 "정리할 업무"는 최신 메모리 상태로 다시 계산되므로
+   * 빈 목록이 되어 재시도할 대상 자체가 사라진다 — 사용자가 빠져나갈 방법이
+   * 없어진다. `apply`가 반환하는 월 목록을 그대로 `#persist`에 넘긴다.
+   */
+  async #commit(apply: () => string[]): Promise<void> {
+    const rollback = $state.snapshot(this.#months) as Record<string, Task[]>
+    const touched = apply()
+    try {
+      await this.#persist(touched)
+    } catch (e) {
+      this.#months = rollback
+      throw e
+    }
   }
 
   async #persist(months: string[]): Promise<void> {
@@ -3715,6 +3879,13 @@ git commit -m "feat: add task store with month-partitioned persistence"
 
 `src/App.svelte`를 교체:
 
+> **갱신 (최종 리뷰 Fix 2):** 아래는 최종 전체 리뷰의 I2를 반영한 최신 버전이다.
+> 원래 버전은 `loadError`를 한 번도 비우지 않아서, 자정 재로드 중 일시적 오류
+> (파일 잠금, 백신 검사 등)가 한 번만 나도 멀쩡하던 화면이 세션 내내 치명적
+> 오류 화면으로 고정됐다. 아래는 (1) effect 진입 시 `loadError`를 비우고,
+> (2) 최초 로드 실패(`!ready`)와 재로드 실패를 템플릿에서 구분해 재로드 실패는
+> 배너만 띄우고 기존 화면을 유지한다.
+
 ```svelte
 <script lang="ts">
   import { getStorage, getClock } from './lib/stores/context'
@@ -3755,6 +3926,11 @@ git commit -m "feat: add task store with month-partitioned persistence"
   // today를 읽으므로 날짜가 바뀌면 다시 실행된다.
   // 달을 넘긴 경우 새 달 파일을 읽어와야 하므로 이 재실행이 필요하다.
   $effect(() => {
+    // 매번 다시 실행되기 전에 이전 오류를 비운다. 비우지 않으면 자정
+    // 재로드 중 일시적 오류(파일 잠금, 백신 검사 등)가 한 번 나는 순간
+    // ready였던 화면이 영영 치명적 오류 화면으로 굳는다 — 다음 재실행은
+    // 24시간 뒤이고, 그마저도 이 줄이 없으면 오류를 비우지 못한다.
+    loadError = null
     Promise.all([config.load(), tasks.loadAround(today)])
       .then(() => { ready = true })
       .catch((e) => { loadError = e instanceof Error ? e.message : String(e) })
@@ -3766,14 +3942,21 @@ git commit -m "feat: add task store with month-partitioned persistence"
   <button class:active={tab === 'settings'} onclick={() => (tab = 'settings')}>설정</button>
 </nav>
 
-{#if loadError}
+{#if loadError && !ready}
+  <!-- 최초 로드 실패: 보여줄 화면이 아예 없으므로 치명적 오류로 처리한다 -->
   <p class="fatal">데이터를 불러오지 못했습니다: {loadError}</p>
 {:else if !ready}
   <p class="loading">불러오는 중…</p>
-{:else if tab === 'today'}
-  <Today {tasks} {config} {today} />
 {:else}
-  <Settings {config} />
+  {#if loadError}
+    <!-- 재로드 실패: 이미 화면이 떠 있으므로 배너만 띄우고 기존 화면은 그대로 둔다 -->
+    <p class="banner">방금 데이터를 다시 불러오지 못했습니다: {loadError}</p>
+  {/if}
+  {#if tab === 'today'}
+    <Today {tasks} {config} {today} />
+  {:else}
+    <Settings {config} />
+  {/if}
 {/if}
 
 <style>
@@ -3782,6 +3965,7 @@ git commit -m "feat: add task store with month-partitioned persistence"
   nav button.active { background: rgba(128,128,128,0.2); font-weight: 600; }
   .fatal { color: #c0392b; padding: 1.5rem; }
   .loading { padding: 1.5rem; opacity: 0.7; }
+  .banner { color: #a86400; background: #fff2d6; padding: 0.6rem 1rem; margin: 0; }
 </style>
 ```
 

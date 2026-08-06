@@ -37,6 +37,11 @@
   // today를 읽으므로 날짜가 바뀌면 다시 실행된다.
   // 달을 넘긴 경우 새 달 파일을 읽어와야 하므로 이 재실행이 필요하다.
   $effect(() => {
+    // 매번 다시 실행되기 전에 이전 오류를 비운다. 비우지 않으면 자정
+    // 재로드 중 일시적 오류(파일 잠금, 백신 검사 등)가 한 번 나는 순간
+    // ready였던 화면이 영영 치명적 오류 화면으로 굳는다 — 다음 재실행은
+    // 24시간 뒤이고, 그마저도 이 줄이 없으면 오류를 비우지 못한다.
+    loadError = null
     Promise.all([config.load(), tasks.loadAround(today)])
       .then(() => { ready = true })
       .catch((e) => { loadError = e instanceof Error ? e.message : String(e) })
@@ -48,14 +53,21 @@
   <button class:active={tab === 'settings'} onclick={() => (tab = 'settings')}>설정</button>
 </nav>
 
-{#if loadError}
+{#if loadError && !ready}
+  <!-- 최초 로드 실패: 보여줄 화면이 아예 없으므로 치명적 오류로 처리한다 -->
   <p class="fatal">데이터를 불러오지 못했습니다: {loadError}</p>
 {:else if !ready}
   <p class="loading">불러오는 중…</p>
-{:else if tab === 'today'}
-  <Today {tasks} {config} {today} />
 {:else}
-  <Settings {config} />
+  {#if loadError}
+    <!-- 재로드 실패: 이미 화면이 떠 있으므로 배너만 띄우고 기존 화면은 그대로 둔다 -->
+    <p class="banner">방금 데이터를 다시 불러오지 못했습니다: {loadError}</p>
+  {/if}
+  {#if tab === 'today'}
+    <Today {tasks} {config} {today} />
+  {:else}
+    <Settings {config} />
+  {/if}
 {/if}
 
 <style>
@@ -64,4 +76,5 @@
   nav button.active { background: rgba(128,128,128,0.2); font-weight: 600; }
   .fatal { color: #c0392b; padding: 1.5rem; }
   .loading { padding: 1.5rem; opacity: 0.7; }
+  .banner { color: #a86400; background: #fff2d6; padding: 0.6rem 1rem; margin: 0; }
 </style>

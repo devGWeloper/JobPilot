@@ -3,6 +3,7 @@ import { MemoryStorage } from '../adapters/memoryStorage'
 import { FixedClock } from '../adapters/fixedClock'
 import { createTaskStore, taskKey } from './tasks.svelte'
 import { SCHEMA_VERSION, type TaskFile } from '../types'
+import { pendingForWrapUp } from '../core/daily'
 
 const TODAY = '2026-08-03'
 const NOW = new Date(2026, 7, 3, 9, 0, 0)
@@ -281,5 +282,132 @@ describe('TaskStore.wrapUp', () => {
 
     expect((await storage.load<TaskFile>(taskKey('2026-08')))!.tasks).toHaveLength(0)
     expect((await storage.load<TaskFile>(taskKey('2026-09')))!.tasks).toHaveLength(1)
+  })
+})
+
+describe('TaskStore 스키마 검증', () => {
+  it('스키마 버전이 다르면 loadAround를 거부한다', async () => {
+    const bad = { schemaVersion: 999, tasks: [] }
+    const { store } = setup({ [taskKey('2026-08')]: bad })
+    await expect(store.loadAround(TODAY)).rejects.toThrow()
+  })
+
+  it('tasks가 배열이 아닌 구조적으로 잘못된 파일을 거부한다', async () => {
+    const bad = { schemaVersion: SCHEMA_VERSION, tasks: {} }
+    const { store } = setup({ [taskKey('2026-08')]: bad })
+    await expect(store.loadAround(TODAY)).rejects.toThrow()
+  })
+
+  it('파일이 아예 없으면 (첫 실행) 여전히 빈 상태로 시작한다', async () => {
+    const { store } = setup()
+    await store.loadAround(TODAY)
+    expect(store.all).toEqual([])
+  })
+
+  it('loadAround 범위 밖 달을 #ensureLoaded로 읽을 때도 스키마를 검증한다', async () => {
+    const bad = { schemaVersion: 999, tasks: [] }
+    const { store } = setup({ [taskKey('2026-12')]: bad })
+    await store.loadAround(TODAY)
+    await expect(store.add({ title: 'x', plannedDate: '2026-12-10' })).rejects.toThrow()
+  })
+})
+
+/** 저장이 실패하는 상황을 만들기 위한 저장소 (config.test.ts의 FailingStorage와 동형) */
+class FailingStorage extends MemoryStorage {
+  failNextSave = false
+  /** 특정 키로의 저장만 실패시킨다. update의 두 파일 쓰기 순서를 검증할 때 쓴다. */
+  failSaveKey: string | null = null
+
+  override async save<T>(key: string, value: T): Promise<void> {
+    if (this.failNextSave) {
+      this.failNextSave = false
+      throw new Error('디스크에 쓸 수 없습니다')
+    }
+    if (this.failSaveKey !== null && key === this.failSaveKey) {
+      throw new Error('디스크에 쓸 수 없습니다')
+    }
+    await super.save(key, value)
+  }
+}
+
+describe('TaskStore 저장 실패 처리', () => {
+  function readySetup(initial: Record<string, unknown> = {}) {
+    const storage = new FailingStorage(initial)
+    const store = createTaskStore(storage, new FixedClock(NOW))
+    return { store, storage }
+  }
+
+  it('add가 저장에 실패하면 메모리 상태를 되돌린다', async () => {
+    const { store, storage } = readySetup()
+    await store.loadAround(TODAY)
+    storage.failNextSave = true
+    await expect(store.add({ title: 'x', plannedDate: TODAY })).rejects.toThrow()
+    expect(store.all).toEqual([])
+  })
+
+  it('add 실패 후 저장소 파일도 쓰이지 않는다', async () => {
+    const { store, storage } = readySetup()
+    await store.loadAround(TODAY)
+    storage.failNextSave = true
+    await expect(store.add({ title: 'x', plannedDate: TODAY })).rejects.toThrow()
+    expect(await storage.load<TaskFile>(taskKey('2026-08'))).toBeNull()
+  })
+
+  it('update가 달 경계를 넘다 실패하면 두 달 모두 되돌린다', async () => {
+    // toMonth(추가)를 먼저 쓰고 fromMonth(제거)를 나중에 쓰므로, fromMonth 쓰기만
+    // 실패시키면 "디스크에는 일시적으로 중복, 메모리는 온전히 롤백"을 관찰할 수 있다.
+    const { store, storage } = readySetup()
+    await store.loadAround(TODAY)
+    const t = await store.add({ title: 'x', plannedDate: '2026-08-31' })
+
+    storage.failSaveKey = taskKey('2026-08')
+    await expect(
+      store.update(t.id, (task) => ({ ...task, plannedDate: '2026-09-01' })),
+    ).rejects.toThrow()
+
+    // 메모리는 원래 상태로 완전히 되돌아간다: 업무가 8월에 하나만 있다
+    expect(store.all).toHaveLength(1)
+    expect(store.all[0]!.plannedDate).toBe('2026-08-31')
+
+    // toMonth(9월) 쓰기는 실패 전에 이미 성공했으므로 디스크에는 남아 있다.
+    // 소실이 아니라 중복이라 재시도로 정리할 수 있다는 것이 이 순서의 요점이다.
+    expect((await storage.load<TaskFile>(taskKey('2026-09')))!.tasks).toHaveLength(1)
+    // fromMonth(8월) 쓰기가 실패했으므로 원래 내용(add 시점에 저장된 것)이 남는다.
+    expect((await storage.load<TaskFile>(taskKey('2026-08')))!.tasks).toHaveLength(1)
+  })
+
+  it('wrapUp이 저장에 실패하면 되돌리고, 재시도 대상이 그대로 남는다', async () => {
+    const { store, storage } = readySetup()
+    await store.loadAround(TODAY)
+    const t = await store.add({ title: 'x', plannedDate: TODAY })
+
+    storage.failNextSave = true
+    await expect(
+      store.wrapUp([{ taskId: t.id, kind: 'carry', toDate: '2026-08-04' }]),
+    ).rejects.toThrow()
+
+    // 메모리가 되돌아가지 않으면 이 업무는 이미 내일 날짜라 pendingForWrapUp이
+    // 빈 배열을 주고, 하루 마감 시트의 "마감하기" 버튼이 disabled가 되어
+    // 사용자가 재시도할 방법이 없어진다. 이 assert가 그 버그의 핵심이다.
+    expect(store.all[0]!.plannedDate).toBe(TODAY)
+    expect(pendingForWrapUp(store.all, TODAY)).toHaveLength(1)
+  })
+
+  it('저장 실패를 error에 남긴다', async () => {
+    const { store, storage } = readySetup()
+    await store.loadAround(TODAY)
+    storage.failNextSave = true
+    await expect(store.add({ title: 'x', plannedDate: TODAY })).rejects.toThrow()
+    expect(store.error).toContain('디스크에 쓸 수 없습니다')
+  })
+
+  it('되돌린 뒤 다시 시도하면 성공한다', async () => {
+    const { store, storage } = readySetup()
+    await store.loadAround(TODAY)
+    storage.failNextSave = true
+    await expect(store.add({ title: 'x', plannedDate: TODAY })).rejects.toThrow()
+    await store.add({ title: 'y', plannedDate: TODAY })
+    expect(store.all).toHaveLength(1)
+    expect(store.error).toBeNull()
   })
 })

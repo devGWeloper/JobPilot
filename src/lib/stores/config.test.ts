@@ -39,6 +39,31 @@ describe('ConfigStore.load', () => {
     await store.load()
     expect(store.config.work.carryWarningDays).toBe(3)
   })
+
+  it('스키마 버전이 다르면 거부한다', async () => {
+    const bad = { schemaVersion: 999, config: { projects: [] } }
+    const store = createConfigStore(new MemoryStorage({ [CONFIG_KEY]: bad }))
+    await expect(store.load()).rejects.toThrow()
+  })
+
+  it('config가 객체가 아닌 구조적으로 잘못된 파일을 거부한다', async () => {
+    const bad = { schemaVersion: SCHEMA_VERSION, config: [] }
+    const store = createConfigStore(new MemoryStorage({ [CONFIG_KEY]: bad }))
+    await expect(store.load()).rejects.toThrow()
+  })
+
+  it('config 필드 자체가 없는 파일을 거부한다', async () => {
+    const bad = { schemaVersion: SCHEMA_VERSION }
+    const store = createConfigStore(new MemoryStorage({ [CONFIG_KEY]: bad }))
+    await expect(store.load()).rejects.toThrow()
+  })
+
+  it('파일이 아예 없으면 (첫 실행) 여전히 기본값으로 시작한다', async () => {
+    const store = createConfigStore(new MemoryStorage())
+    await store.load()
+    expect(store.config.projects).toEqual([])
+    expect(store.loaded).toBe(true)
+  })
 })
 
 describe('ConfigStore 프로젝트 관리', () => {

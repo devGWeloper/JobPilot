@@ -11,6 +11,33 @@ import { newId } from '../core/ids'
 
 export const CONFIG_KEY = 'config'
 
+/**
+ * 읽어온 파일의 봉투를 검증한다. 실패하면 조용히 기본값으로 대체하지 않고 던진다.
+ *
+ * schemaVersion을 확인하지 않으면, 미래 버전이 쓴 파일(예: 7단계의 profile/ai
+ * 필드를 담은 v2)을 이 버전이 읽을 수 있는 것만 골라 읽고 첫 저장에서
+ * `schemaVersion: 1`로 통째로 덮어써 나머지 필드를 영구히 없앤다.
+ * `config`가 객체인지도 확인한다 — JSON 파싱은 되지만 봉투 구조가 잘못된
+ * 파일(예: `config` 필드 자체가 없거나 배열인 경우)은 지금까지 빈 설정으로
+ * 읽혀 그대로 덮어써졌다.
+ *
+ * `file`이 `null`인 경우(아직 한 번도 저장한 적 없음)는 정상적인 첫 실행
+ * 경로이므로 검증 대상이 아니다.
+ */
+function assertValidConfigFile(key: string, file: ConfigFile | null): void {
+  if (file === null) return
+  if (file.schemaVersion !== SCHEMA_VERSION) {
+    throw new Error(
+      `${key}의 스키마 버전이 맞지 않습니다 (파일: ${String(file.schemaVersion)}, ` +
+        `이 앱이 지원하는 버전: ${SCHEMA_VERSION}). 다른 버전의 JobPilot이 저장한 ` +
+        `파일로 보입니다. 데이터 손실을 막기 위해 읽기를 중단합니다.`,
+    )
+  }
+  if (typeof file.config !== 'object' || file.config === null || Array.isArray(file.config)) {
+    throw new Error(`${key} 파일의 구조가 올바르지 않습니다: config가 비어 있거나 객체가 아닙니다`)
+  }
+}
+
 export class ConfigStore {
   #config = $state<Config>(structuredClone(DEFAULT_CONFIG))
   #loaded = $state(false)
@@ -32,6 +59,7 @@ export class ConfigStore {
 
   async load(): Promise<void> {
     const file = await this.storage.load<ConfigFile>(CONFIG_KEY)
+    assertValidConfigFile(CONFIG_KEY, file)
     this.#config = file ? normalize(file.config) : structuredClone(DEFAULT_CONFIG)
     this.#loaded = true
   }

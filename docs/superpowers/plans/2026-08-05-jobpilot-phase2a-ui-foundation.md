@@ -344,10 +344,16 @@ Run: `npx shadcn-svelte@latest init --help`
 
 출력에 있는 플래그를 써서 다음 선택으로 초기화한다:
 
-- base color: `slate`
+- base color: `zinc`
 - global CSS 파일: `src/app.css`
 - 컴포넌트 별칭: `$lib/components`
 - 유틸 별칭: `$lib/utils`
+
+> base color는 CLI가 전역 CSS에 써넣는 초기 변수값만 정한다. Task 1의 팔레트가
+> 그 값을 전부 덮으므로 실질 영향은 거의 없다. `zinc`을 고르는 이유는 혹시
+> 남는 값이 있을 때 우리 팔레트(파랑기 도는 회색)와 덜 어긋나기 때문이다.
+> shadcn-svelte 1.5.0의 허용값은 `neutral, stone, zinc, mauve, olive, mist,
+> taupe`이며 `slate`는 없다 — React판 shadcn/ui와 목록이 다르다.
 
 Expected: `components.json`이 생성된다.
 

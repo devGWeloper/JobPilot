@@ -9,3 +9,14 @@ import { twMerge } from 'tailwind-merge'
 export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs))
 }
+
+// shadcn-svelte 1.5.0이 생성하는 컴포넌트들이 이 세 타입 헬퍼를 $lib/utils에서
+// 가져온다. CLI의 registry/utils.json이 배포하는 정의 그대로다 — init을
+// 대화형 없이 돌릴 수 없어 add로만 컴포넌트를 설치했고, 그래서 CLI가
+// 보통 여기 써넣는 이 타입들을 직접 옮겨 적었다.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type WithoutChild<T> = T extends { child?: any } ? Omit<T, 'child'> : T
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type WithoutChildren<T> = T extends { children?: any } ? Omit<T, 'children'> : T
+export type WithoutChildrenOrChild<T> = WithoutChildren<WithoutChild<T>>
+export type WithElementRef<T, U extends HTMLElement = HTMLElement> = T & { ref?: U | null }

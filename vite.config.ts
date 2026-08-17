@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import tailwindcss from '@tailwindcss/vite'
@@ -5,6 +6,13 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   plugins: [tailwindcss(), svelte()],
   clearScreen: false,
+  resolve: {
+    alias: {
+      // Windows에서 URL.pathname은 "/C:/..." 형태라 그대로 쓰면 경로가 깨진다.
+      // fileURLToPath가 플랫폼에 맞는 경로로 바꿔준다.
+      $lib: fileURLToPath(new URL('./src/lib', import.meta.url)),
+    },
+  },
   server: {
     port: 1420,
     strictPort: true,

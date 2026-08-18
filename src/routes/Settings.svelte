@@ -1,6 +1,12 @@
 <script lang="ts">
   import type { Project } from '../lib/types'
   import type { ConfigStore } from '../lib/stores/config.svelte'
+  import { Button } from '$lib/components/ui/button'
+  import { Input } from '$lib/components/ui/input'
+  import { Checkbox } from '$lib/components/ui/checkbox'
+  import { Label } from '$lib/components/ui/label'
+  import * as Card from '$lib/components/ui/card'
+  import * as Alert from '$lib/components/ui/alert'
 
   let { config }: { config: ConfigStore } = $props()
 
@@ -40,63 +46,86 @@
   }
 </script>
 
-<section>
-  <h2>프로젝트</h2>
-  <p class="hint">업무를 묶는 단위입니다. 주간보고도 이 단위로 정리됩니다.</p>
+<div class="mx-auto max-w-2xl p-6">
+  <Card.Root>
+    <Card.Header>
+      <Card.Title>프로젝트</Card.Title>
+      <Card.Description>
+        업무를 묶는 단위입니다. 주간보고도 이 단위로 정리됩니다.
+      </Card.Description>
+    </Card.Header>
 
-  <form onsubmit={(e) => { e.preventDefault(); add() }}>
-    <input
-      type="text"
-      bind:value={newName}
-      placeholder="프로젝트 이름"
-      aria-label="새 프로젝트 이름"
-    />
-    <input type="color" bind:value={newColor} aria-label="색상" />
-    <button type="submit">추가</button>
-  </form>
+    <Card.Content class="space-y-4">
+      <form
+        class="flex items-center gap-2"
+        onsubmit={(e) => {
+          e.preventDefault()
+          add()
+        }}
+      >
+        <Input
+          type="text"
+          bind:value={newName}
+          placeholder="프로젝트 이름"
+          aria-label="새 프로젝트 이름"
+          class="flex-1"
+        />
+        <input
+          type="color"
+          bind:value={newColor}
+          aria-label="색상"
+          class="h-9 w-12 shrink-0 cursor-pointer rounded-md border border-input bg-background p-1"
+        />
+        <Button type="submit">추가</Button>
+      </form>
 
-  {#if message}
-    <p class="error">{message}</p>
-  {/if}
+      {#if message}
+        <Alert.Root variant="destructive">
+          <Alert.Description>{message}</Alert.Description>
+        </Alert.Root>
+      {/if}
 
-  {#if config.config.projects.length === 0}
-    <p class="empty">아직 프로젝트가 없습니다.</p>
-  {:else}
-    <ul>
-      {#each config.config.projects as p (p.id)}
-        <li>
-          <span class="dot" style="background:{p.color}"></span>
-          <input
-            class="name"
-            value={p.name}
-            onchange={(e) => rename(p, e.currentTarget)}
-            aria-label="프로젝트 이름"
-          />
-          <label>
-            <input
-              type="checkbox"
-              checked={p.active}
-              onchange={(e) => run(() => config.setProjectActive(p.id, e.currentTarget.checked))}
-            />
-            사용
-          </label>
-          <button onclick={() => remove(p.id, p.name)}>삭제</button>
-        </li>
-      {/each}
-    </ul>
-  {/if}
-</section>
+      {#if config.config.projects.length === 0}
+        <p class="py-6 text-center text-sm text-muted-foreground">
+          아직 프로젝트가 없습니다.
+        </p>
+      {:else}
+        <ul class="divide-y divide-border">
+          {#each config.config.projects as p (p.id)}
+            <li class="flex items-center gap-3 py-2">
+              <span
+                class="size-3.5 shrink-0 rounded-full ring-1 ring-border"
+                style="background:{p.color}"
+              ></span>
 
-<style>
-  section { padding: 1.5rem; max-width: 640px; }
-  h2 { margin: 0 0 0.25rem; font-size: 1.1rem; }
-  .hint { margin: 0 0 1rem; opacity: 0.7; font-size: 0.85rem; }
-  form { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
-  form input[type='text'] { flex: 1; padding: 0.5rem; }
-  ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.5rem; }
-  li { display: flex; align-items: center; gap: 0.6rem; }
-  .dot { width: 0.9rem; height: 0.9rem; border-radius: 50%; flex: none; }
-  .name { flex: 1; padding: 0.4rem; }
-  .error { color: #c0392b; }
-  .empty { opacity: 0.6; }
-</style>
+              <Input
+                value={p.name}
+                onchange={(e) => rename(p, e.currentTarget)}
+                aria-label="프로젝트 이름"
+                class="h-8 flex-1"
+              />
+
+              <div class="flex shrink-0 items-center gap-1.5">
+                <Checkbox
+                  id="active-{p.id}"
+                  checked={p.active}
+                  onCheckedChange={(v) => run(() => config.setProjectActive(p.id, v === true))}
+                />
+                <Label for="active-{p.id}" class="text-sm text-muted-foreground">사용</Label>
+              </div>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                class="shrink-0 text-muted-foreground hover:text-destructive"
+                onclick={() => remove(p.id, p.name)}
+              >
+                삭제
+              </Button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </Card.Content>
+  </Card.Root>
+</div>

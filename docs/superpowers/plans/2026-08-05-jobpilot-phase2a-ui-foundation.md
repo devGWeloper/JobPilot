@@ -925,10 +925,20 @@ git commit -m "feat: add theme store and move the app shell onto shadcn"
 </div>
 ```
 
-> 함수 바인딩은 Svelte 5.9+ 문법이다(설치본 5.56). 이전 버전이라면 게터를
-> 주기도 하고 `boolean | 'indeterminate'`를 주기도 한다. 위 코드는 `v === true`로
-> 비교해 양쪽 모두에서 동작한다. 타입 오류가 나면 실제 시그니처를 확인하고
-> 비교식만 맞춘다 — `config.setProjectActive`에는 반드시 `boolean`이 가야 한다.
+> `bind:checked={getter, setter}`는 Svelte 5.9 이상의 함수 바인딩 문법이다
+> (이 저장소의 설치본은 5.56). 게터가 매번 `p.active`를 다시 읽기 때문에,
+> 저장이 실패해 스토어가 롤백하면 그 값이 그대로 체크박스로 내려간다.
+>
+> 평범한 prop(`checked={p.active}`)으로 넘기면 이 경로가 끊긴다. shadcn의
+> `Checkbox`가 `checked`를 `$bindable`로 선언해 bits-ui에 `bind:`로 넘기므로,
+> 클릭하는 순간 상태 소유권이 라이브러리로 넘어간다. 롤백은 `p.active`를
+> **원래 값**으로 되돌리는데 그건 prop이 이미 갖고 있던 값이라, Svelte 입장에선
+> 바뀐 게 없어 아무것도 내려보내지 않는다. 결과적으로 데이터는 옳고 화면만
+> 뒤집힌 상태가 남는다 — 이름 변경에서 `el.value = p.name`으로 막은 것과
+> 똑같은 종류의 어긋남이다.
+>
+> `setProjectActive`에는 반드시 `boolean`이 가야 한다. bits-ui의 `checked`는
+> `boolean`이며 `indeterminate`는 별도 채널이라 이 경로로 들어오지 않는다.
 
 - [ ] **Step 2: 확인**
 

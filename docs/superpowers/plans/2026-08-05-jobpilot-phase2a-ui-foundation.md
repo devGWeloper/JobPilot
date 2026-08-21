@@ -585,6 +585,37 @@ export function createThemeStore(storage: ThemeStorage): ThemeStore {
 Run: `npm test`
 Expected: PASS — 151 + 12 = 163 passed
 
+- [ ] **Step 6.5: 첫 페인트 전에 테마를 적용한다**
+
+`index.html`의 `<title>` 바로 아래, 모듈 스크립트보다 **먼저** 실행되도록 추가한다:
+
+```html
+    <script>
+      // 저장된 테마를 첫 페인트 전에 적용한다.
+      // theme.svelte.ts의 apply()는 $effect라 마운트 이후에야 실행되므로,
+      // 이 줄이 없으면 다크 테마 사용자는 앱을 열 때마다 흰 화면이 한 프레임
+      // 번쩍인 뒤 어두워진다. 콜드 스타트하는 WebView에서 특히 두드러진다.
+      // 키 문자열은 THEME_KEY(src/lib/theme.svelte.ts)와 반드시 일치해야 한다.
+      try {
+        if (localStorage.getItem('jobpilot.theme') === 'dark') {
+          document.documentElement.classList.add('dark')
+        }
+      } catch (e) {
+        // 저장소가 막힌 환경에서도 앱은 떠야 한다
+      }
+    </script>
+```
+
+그리고 `src/lib/theme.svelte.ts`의 `THEME_KEY` 위에 양쪽이 묶여 있음을 남긴다:
+
+```ts
+/**
+ * 이 문자열은 index.html의 인라인 스크립트에도 하드코딩되어 있다.
+ * 그 스크립트가 첫 페인트 전에 다크 클래스를 붙여 흰 화면 번쩍임을 막는다.
+ * 값을 바꾸면 양쪽을 함께 고쳐야 한다.
+ */
+```
+
 - [ ] **Step 7: 앱 셸 마이그레이션**
 
 `src/App.svelte`를 다음으로 교체한다. **`<script>` 안의 로직은 테마 관련 3줄 추가 외에 한 글자도 바뀌지 않는다** — 날짜 반응성, 오류 비우기, 두 개의 `$effect`는 Phase 1의 리뷰 수정으로 들어간 것이라 그대로 보존한다.
@@ -861,10 +892,18 @@ git commit -m "feat: add theme store and move the app shell onto shadcn"
               />
 
               <div class="flex shrink-0 items-center gap-1.5">
+                <!-- 평범한 prop이 아니라 함수 바인딩이어야 한다.
+                     Checkbox는 checked를 $bindable로 선언해 bits-ui에 넘기므로,
+                     클릭하는 순간 상태 소유권이 그쪽으로 넘어간다. 저장이 실패해
+                     스토어가 p.active를 원래 값으로 되돌려도 prop 값은 그대로라
+                     Svelte가 정정을 내려보내지 않고, 체크박스만 뒤집힌 채 남는다.
+                     게터로 넘기면 롤백이 그대로 화면에 반영된다. -->
                 <Checkbox
                   id="active-{p.id}"
-                  checked={p.active}
-                  onCheckedChange={(v) => run(() => config.setProjectActive(p.id, v === true))}
+                  bind:checked={
+                    () => p.active,
+                    (v) => { run(() => config.setProjectActive(p.id, v)) }
+                  }
                 />
                 <Label for="active-{p.id}" class="text-sm text-muted-foreground">사용</Label>
               </div>
@@ -886,7 +925,7 @@ git commit -m "feat: add theme store and move the app shell onto shadcn"
 </div>
 ```
 
-> `Checkbox`의 콜백은 shadcn-svelte 버전에 따라 `onCheckedChange`가 `boolean`을
+> 함수 바인딩은 Svelte 5.9+ 문법이다(설치본 5.56). 이전 버전이라면 게터를
 > 주기도 하고 `boolean | 'indeterminate'`를 주기도 한다. 위 코드는 `v === true`로
 > 비교해 양쪽 모두에서 동작한다. 타입 오류가 나면 실제 시그니처를 확인하고
 > 비교식만 맞춘다 — `config.setProjectActive`에는 반드시 `boolean`이 가야 한다.

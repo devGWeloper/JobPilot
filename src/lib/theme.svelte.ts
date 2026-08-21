@@ -1,5 +1,10 @@
 export type Theme = 'light' | 'dark'
 
+/**
+ * 이 문자열은 index.html의 인라인 스크립트에도 하드코딩되어 있다.
+ * 그 스크립트가 첫 페인트 전에 다크 클래스를 붙여 흰 화면 번쩍임을 막는다.
+ * 값을 바꾸면 양쪽을 함께 고쳐야 한다.
+ */
 export const THEME_KEY = 'jobpilot.theme'
 
 /**

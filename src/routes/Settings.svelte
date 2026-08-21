@@ -109,10 +109,18 @@
               />
 
               <div class="flex shrink-0 items-center gap-1.5">
+                <!-- 평범한 prop이 아니라 함수 바인딩이어야 한다.
+                     Checkbox는 checked를 $bindable로 선언해 bits-ui에 넘기므로,
+                     클릭하는 순간 상태 소유권이 그쪽으로 넘어간다. 저장이 실패해
+                     스토어가 p.active를 원래 값으로 되돌려도 prop 값은 그대로라
+                     Svelte가 정정을 내려보내지 않고, 체크박스만 뒤집힌 채 남는다.
+                     게터로 넘기면 롤백이 그대로 화면에 반영된다. -->
                 <Checkbox
                   id="active-{p.id}"
-                  checked={p.active}
-                  onCheckedChange={(v) => run(() => config.setProjectActive(p.id, v === true))}
+                  bind:checked={
+                    () => p.active,
+                    (v) => { run(() => config.setProjectActive(p.id, v)) }
+                  }
                 />
                 <Label for="active-{p.id}" class="text-sm text-muted-foreground">사용</Label>
               </div>

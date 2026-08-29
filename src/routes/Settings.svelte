@@ -97,7 +97,7 @@
                    ring-border는 다크에서 카드와 명도 차이가 7포인트뿐이라,
                    사용자가 어두운 프로젝트 색을 고르면 점이 통째로 사라진다.
                    ring-foreground/20은 다크에서 1.83:1로 여전히 WCAG 1.4.11의
-                   3:1에 못 미쳐 /40으로 올렸다(약 2.9:1). -->
+                   3:1에 못 미쳐 /40으로 올렸다(약 3.56:1). -->
               <span
                 class="size-3.5 shrink-0 rounded-full ring-1 ring-foreground/40"
                 style="background:{p.color}"

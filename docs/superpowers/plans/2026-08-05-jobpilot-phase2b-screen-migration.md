@@ -70,7 +70,7 @@ JobPilot/
 ## Task 1: 컴포넌트 테스트 인프라와 색 점 보강
 
 **Files:**
-- Modify: `package.json`, `src/routes/Settings.svelte`
+- Modify: `package.json`, `vite.config.ts`, `src/routes/Settings.svelte`
 - Create: `src/routes/Settings.test.ts`
 
 **Interfaces:**
@@ -83,6 +83,24 @@ JobPilot/
 
 Run: `npm install -D @testing-library/svelte @testing-library/dom`
 Expected: 오류 없이 완료
+
+이어서 `vite.config.ts`의 `plugins` 배열에 `svelteTesting()`을 추가한다:
+
+```ts
+import { svelteTesting } from '@testing-library/svelte/vite'
+
+export default defineConfig({
+  plugins: [tailwindcss(), svelte(), svelteTesting()],
+  // 나머지는 그대로
+})
+```
+
+> 이 플러그인이 없으면 컴포넌트 테스트가 전부
+> `lifecycle_function_unavailable`로 죽는다. `@sveltejs/vite-plugin-svelte`가
+> vitest 아래에서는 Svelte를 SSR 모드로 컴파일해 `mount()`를 내주지 않기
+> 때문이다. 플러그인 내부가 `process.env.VITEST`로 스스로를 가드하므로
+> `dev`/`build`/`tauri`에는 영향이 없다. `test.environment`(jsdom)와
+> `test.include`는 건드리지 않는다 — 그쪽 주석에 적힌 이유가 따로 있다.
 
 - [ ] **Step 2: 실패하는 회귀 테스트 작성**
 

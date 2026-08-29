@@ -957,9 +957,13 @@ describe('DailyWrapUp', () => {
     const { tasks, onClose } = await setup(['보고서'])
     await fireEvent.click(await waitFor(() => screen.getByRole('button', { name: '마감하기' })))
 
-    await waitFor(() => expect(tasks.all[0]!.plannedDate).toBe('2026-08-04'))
+    // onClose가 이 흐름의 마지막 사건이다. tasks.all 변경은 #commit 안에서
+    // 동기적으로 일어나 몇 마이크로태스크 먼저 관측되므로, 그쪽을 먼저
+    // 기다리면 onClose가 아직 안 불린 채로 단언이 실행된다.
+    // 마지막 사건을 기다리면 나머지는 이미 확정돼 있다.
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+    expect(tasks.all[0]!.plannedDate).toBe('2026-08-04')
     expect(tasks.all[0]!.carryCount).toBe(1)
-    expect(onClose).toHaveBeenCalled()
   })
 
   it('완료를 고르면 메모 입력칸이 나타난다', async () => {

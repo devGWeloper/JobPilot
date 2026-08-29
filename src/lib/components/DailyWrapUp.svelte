@@ -5,6 +5,9 @@
   import type { ConfigStore } from '../stores/config.svelte'
   import { pendingForWrapUp, type WrapUpDecision } from '../core/daily'
   import { overdueDays } from '../core/task'
+  import { Button } from '$lib/components/ui/button'
+  import { Input } from '$lib/components/ui/input'
+  import * as Dialog from '$lib/components/ui/dialog'
 
   let {
     tasks,
@@ -28,25 +31,16 @@
   // 컴포넌트가 리마운트되지 않으므로 다시 시도해도 빠져나오지 못한다.
   const tomorrow = $derived(addDays(today, 1))
 
-  // 기본 제안은 전부 내일로 이월
   let choices = $state<Record<string, Choice>>({})
   let notes = $state<Record<string, string>>({})
   let saving = $state(false)
   let error = $state<string | null>(null)
 
+  // 기본 제안은 전부 내일로 이월
   $effect(() => {
     for (const t of pending) {
       if (!(t.id in choices)) choices[t.id] = 'carry'
     }
-  })
-
-  // Escape로 닫히지 않으면 마우스 없이는 시트를 빠져나갈 수 없다
-  $effect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
   })
 
   function setAll(choice: Choice) {
@@ -80,98 +74,101 @@
   }
 </script>
 
-<div class="backdrop" role="presentation" onclick={onClose}></div>
+<!-- 이 컴포넌트는 Today가 {#if}로 감싸 열려 있을 때만 존재한다. 그래서
+     게터는 항상 true이고, Dialog가 닫히려 할 때 onClose로 알린다.
+     Escape·바깥 클릭·포커스 트랩은 모두 Dialog가 처리하므로 직접 붙이지 않는다. -->
+<Dialog.Root
+  bind:open={
+    () => true,
+    (v) => {
+      if (!v) onClose()
+    }
+  }
+>
+  <Dialog.Content class="flex max-h-[90vh] flex-col sm:max-w-2xl">
+    <Dialog.Header>
+      <Dialog.Title>하루 마감</Dialog.Title>
+      <Dialog.Description>
+        정리할 업무 {pending.length}건. 기본은 내일({tomorrow})로 이월입니다.
+      </Dialog.Description>
+    </Dialog.Header>
 
-<div class="sheet" role="dialog" aria-modal="true" aria-label="하루 마감">
-  <header>
-    <h2>하루 마감</h2>
-    <p>정리할 업무 {pending.length}건. 기본은 내일({tomorrow})로 이월입니다.</p>
-  </header>
+    {#if pending.length === 0}
+      <p class="py-6 text-center text-sm text-muted-foreground">
+        정리할 업무가 없습니다. 오늘 할 일을 모두 마쳤습니다.
+      </p>
+    {:else}
+      <div class="flex items-center gap-1.5 text-sm">
+        <span class="text-muted-foreground">전체:</span>
+        <Button variant="outline" size="sm" onclick={() => setAll('complete')}>완료</Button>
+        <Button variant="outline" size="sm" onclick={() => setAll('carry')}>이월</Button>
+        <Button variant="outline" size="sm" onclick={() => setAll('drop')}>포기</Button>
+      </div>
 
-  {#if pending.length === 0}
-    <p class="empty">정리할 업무가 없습니다. 오늘 할 일을 모두 마쳤습니다.</p>
-  {:else}
-    <div class="bulk">
-      <span>전체:</span>
-      <button onclick={() => setAll('complete')}>완료</button>
-      <button onclick={() => setAll('carry')}>이월</button>
-      <button onclick={() => setAll('drop')}>포기</button>
-    </div>
+      <ul class="-mx-1 grid gap-3 overflow-y-auto px-1 py-1">
+        {#each pending as task (task.id)}
+          <li class="grid gap-2 rounded-md bg-muted/40 p-3">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="font-medium">{task.title}</span>
 
-    <ul>
-      {#each pending as task (task.id)}
-        <li>
-          <div class="row">
-            <span class="title">{task.title}</span>
-            {#if config.projectById(task.projectId)}
-              <span class="project">{config.projectById(task.projectId)!.name}</span>
+              {#if config.projectById(task.projectId)}
+                <span class="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                  {config.projectById(task.projectId)!.name}
+                </span>
+              {/if}
+
+              {#if overdueDays(task, today) > 0}
+                <span class="late rounded-full px-2 py-0.5 text-xs text-warning">
+                  {overdueDays(task, today)}일 밀림
+                </span>
+              {/if}
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3 text-sm">
+              {#each [['complete', '완료'], ['carry', '내일로'], ['drop', '포기'], ['keep', '그대로']] as [value, label] (value)}
+                <label class="flex items-center gap-1.5">
+                  <input
+                    type="radio"
+                    class="accent-primary"
+                    bind:group={choices[task.id]}
+                    {value}
+                    aria-label={label}
+                  />
+                  {label}
+                </label>
+              {/each}
+            </div>
+
+            {#if choices[task.id] === 'complete' || choices[task.id] === 'drop'}
+              <Input
+                type="text"
+                bind:value={notes[task.id]}
+                placeholder={choices[task.id] === 'complete'
+                  ? '실제로 한 일 (선택)'
+                  : '포기 사유 (선택)'}
+                aria-label="메모"
+                class="h-8"
+              />
             {/if}
-            {#if overdueDays(task, today) > 0}
-              <span class="late">{overdueDays(task, today)}일 밀림</span>
-            {/if}
-          </div>
+          </li>
+        {/each}
+      </ul>
+    {/if}
 
-          <div class="row">
-            <label><input type="radio" bind:group={choices[task.id]} value="complete" /> 완료</label>
-            <label><input type="radio" bind:group={choices[task.id]} value="carry" /> 내일로</label>
-            <label><input type="radio" bind:group={choices[task.id]} value="drop" /> 포기</label>
-            <label><input type="radio" bind:group={choices[task.id]} value="keep" /> 그대로</label>
-          </div>
+    {#if error}
+      <p class="text-sm text-destructive">{error}</p>
+    {/if}
 
-          {#if choices[task.id] === 'complete' || choices[task.id] === 'drop'}
-            <input
-              class="note"
-              type="text"
-              bind:value={notes[task.id]}
-              placeholder={choices[task.id] === 'complete' ? '실제로 한 일 (선택)' : '포기 사유 (선택)'}
-              aria-label="메모"
-            />
-          {/if}
-        </li>
-      {/each}
-    </ul>
-  {/if}
-
-  {#if error}
-    <p class="error">{error}</p>
-  {/if}
-
-  <footer>
-    <button onclick={onClose}>닫기</button>
-    <button class="primary" onclick={submit} disabled={saving || pending.length === 0}>
-      {saving ? '저장 중…' : '마감하기'}
-    </button>
-  </footer>
-</div>
+    <Dialog.Footer>
+      <Button variant="outline" onclick={onClose}>닫기</Button>
+      <Button onclick={submit} disabled={saving || pending.length === 0}>
+        {saving ? '저장 중…' : '마감하기'}
+      </Button>
+    </Dialog.Footer>
+  </Dialog.Content>
+</Dialog.Root>
 
 <style>
-  .backdrop {
-    position: fixed; inset: 0; background: rgba(0, 0, 0, 0.35);
-  }
-  .sheet {
-    position: fixed; inset: 5% 50% 5% 50%;
-    transform: translateX(-50%); width: min(680px, 92vw);
-    background: Canvas; color: CanvasText;
-    border-radius: 10px; padding: 1.25rem;
-    display: flex; flex-direction: column; overflow: hidden;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
-  }
-  header h2 { margin: 0; font-size: 1.1rem; }
-  header p { margin: 0.25rem 0 1rem; opacity: 0.7; font-size: 0.85rem; }
-  .bulk { display: flex; gap: 0.4rem; align-items: center; margin-bottom: 0.75rem; font-size: 0.85rem; }
-  .bulk button { padding: 0.25rem 0.6rem; }
-  ul { list-style: none; padding: 0; margin: 0; overflow-y: auto; display: grid; gap: 0.75rem; }
-  li { padding: 0.6rem; border-radius: 6px; background: rgba(128, 128, 128, 0.08); display: grid; gap: 0.4rem; }
-  .row { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
-  .title { font-weight: 500; }
-  .project, .late { font-size: 0.72rem; padding: 0.1rem 0.4rem; border-radius: 999px; }
-  .project { background: rgba(128, 128, 128, 0.2); }
-  .late { background: #fff2d6; color: #a86400; }
-  label { font-size: 0.85rem; display: flex; align-items: center; gap: 0.2rem; }
-  .note { padding: 0.4rem; width: 100%; }
-  .empty { opacity: 0.6; padding: 1rem 0; }
-  .error { color: #c0392b; }
-  footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding-top: 1rem; }
-  footer button { padding: 0.5rem 1rem; }
-  .primary { font-weight: 600; }
+  /* Tailwind의 슬래시 표기는 여기서 쓸 수 없어 토큰을 직접 섞는다 */
+  .late { background-color: color-mix(in srgb, var(--warning) 12%, transparent); }
 </style>

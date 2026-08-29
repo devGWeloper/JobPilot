@@ -5,10 +5,12 @@
   import type { ConfigStore } from '../lib/stores/config.svelte'
   import { completeTask, reopenTask, startTask, isOpen, isOverdue } from '../lib/core/task'
   import { getClock } from '../lib/stores/context'
+  import { pendingForWrapUp } from '../lib/core/daily'
   import QuickAdd from '../lib/components/QuickAdd.svelte'
   import TaskList from '../lib/components/TaskList.svelte'
   import DailyWrapUp from '../lib/components/DailyWrapUp.svelte'
-  import { pendingForWrapUp } from '../lib/core/daily'
+  import { Button } from '$lib/components/ui/button'
+  import * as Alert from '$lib/components/ui/alert'
 
   let {
     tasks,
@@ -26,12 +28,15 @@
   // 상태 전이는 잘못된 전환에서 throw하고, 저장은 디스크 사정으로 실패할 수
   // 있다. 모든 동작을 이 함수로 통과시켜, 실패가 unhandled rejection으로
   // 조용히 사라지지 않고 화면에 뜨게 한다.
-  async function run(action: () => Promise<unknown>): Promise<void> {
+  // 성공 여부를 돌려주는 이유: QuickAdd가 실패 시 입력칸을 남겨야 한다.
+  async function run(action: () => Promise<unknown>): Promise<boolean> {
     try {
       await action()
       actionError = null
+      return true
     } catch (e) {
       actionError = e instanceof Error ? e.message : String(e)
+      return false
     }
   }
 
@@ -42,9 +47,7 @@
   function toggle(task: Task) {
     const now = getClock().now()
     return run(() =>
-      tasks.update(task.id, (t) =>
-        isOpen(t) ? completeTask(t, now) : reopenTask(t, now),
-      ),
+      tasks.update(task.id, (t) => (isOpen(t) ? completeTask(t, now) : reopenTask(t, now))),
     )
   }
 
@@ -54,7 +57,7 @@
   }
 
   function remove(task: Task) {
-    if (!confirm(`'${task.title}'을(를) 삭제할까요?`)) return Promise.resolve()
+    if (!confirm(`'${task.title}'을(를) 삭제할까요?`)) return Promise.resolve(false)
     return run(() => tasks.remove(task.id))
   }
 
@@ -62,21 +65,31 @@
   const pendingCount = $derived(pendingForWrapUp(tasks.all, today).length)
 </script>
 
-<div class="page">
-  <header>
-    <h2>{today}</h2>
-    <p class="summary">
+<div class="mx-auto max-w-3xl p-6">
+  <header class="mb-4">
+    <h2 class="text-xl font-semibold tracking-tight">{today}</h2>
+    <p class="mt-0.5 text-sm text-muted-foreground">
       남은 일 {late.length + open.length}건
-      {#if late.length > 0}<span class="warn">· 밀린 일 {late.length}건</span>{/if}
+      {#if late.length > 0}
+        <span class="text-warning">· 밀린 일 {late.length}건</span>
+      {/if}
     </p>
   </header>
 
   <QuickAdd {config} onAdd={add} />
 
   {#if actionError}
-    <p class="error">{actionError}</p>
+    <div class="mb-4">
+      <Alert.Root variant="destructive">
+        <Alert.Description>{actionError}</Alert.Description>
+      </Alert.Root>
+    </div>
   {:else if tasks.error}
-    <p class="error">저장에 실패했습니다: {tasks.error}</p>
+    <div class="mb-4">
+      <Alert.Root variant="destructive">
+        <Alert.Description>저장에 실패했습니다: {tasks.error}</Alert.Description>
+      </Alert.Root>
+    </div>
   {/if}
 
   {#if late.length > 0}
@@ -116,24 +129,13 @@
     />
   {/if}
 
-  <div class="wrapup-bar">
-    <button class="wrapup" onclick={() => (wrapUpOpen = true)}>
-      하루 마감 {#if pendingCount > 0}({pendingCount}건){/if}
-    </button>
+  <div class="mt-6 border-t border-border pt-4">
+    <Button onclick={() => (wrapUpOpen = true)}>
+      하루 마감{#if pendingCount > 0}&nbsp;({pendingCount}건){/if}
+    </Button>
   </div>
 
   {#if wrapUpOpen}
     <DailyWrapUp {tasks} {config} {today} onClose={() => (wrapUpOpen = false)} />
   {/if}
 </div>
-
-<style>
-  .page { padding: 1.5rem; max-width: 760px; }
-  header { margin-bottom: 1rem; }
-  h2 { margin: 0; font-size: 1.2rem; }
-  .summary { margin: 0.2rem 0 0; opacity: 0.7; font-size: 0.85rem; }
-  .warn { color: #a86400; }
-  .error { color: #c0392b; }
-  .wrapup-bar { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid rgba(128,128,128,0.25); }
-  .wrapup { padding: 0.6rem 1.2rem; font-weight: 600; cursor: pointer; border-radius: 6px; }
-</style>

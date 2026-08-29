@@ -2,9 +2,14 @@ import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import tailwindcss from '@tailwindcss/vite'
+import { svelteTesting } from '@testing-library/svelte/vite'
 
 export default defineConfig({
-  plugins: [tailwindcss(), svelte()],
+  // svelteTesting()는 process.env.VITEST가 있을 때만 동작해 dev/build/tauri에는
+  // 영향이 없다. vite-plugin-svelte가 기본적으로 컴포넌트를 서버(SSR) 모드로
+  // 컴파일해 테스트에서 mount()가 "not available on the server"로 죽는 문제를,
+  // resolve.conditions에 'browser'를 끼워 넣어 막아준다.
+  plugins: [tailwindcss(), svelte(), svelteTesting({ autoCleanup: false, noExternal: false })],
   clearScreen: false,
   resolve: {
     alias: {

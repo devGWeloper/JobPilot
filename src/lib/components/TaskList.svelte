@@ -25,12 +25,16 @@
   } = $props()
 </script>
 
-<section>
-  <h3>{title} <span class="count">{tasks.length}</span></h3>
+<section class="mb-6">
+  <h3 class="mb-2 text-sm font-medium text-muted-foreground">
+    {title}
+    <span class="ml-1 font-normal opacity-70">{tasks.length}</span>
+  </h3>
+
   {#if tasks.length === 0}
-    <p class="empty">{emptyText}</p>
+    <p class="text-sm text-muted-foreground/70">{emptyText}</p>
   {:else}
-    <ul>
+    <ul class="grid gap-1.5">
       {#each tasks as task (task.id)}
         <TaskItem
           {task}
@@ -45,11 +49,3 @@
     </ul>
   {/if}
 </section>
-
-<style>
-  section { margin-bottom: 1.5rem; }
-  h3 { font-size: 0.9rem; margin: 0 0 0.5rem; opacity: 0.8; }
-  .count { opacity: 0.5; font-weight: 400; }
-  ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.35rem; }
-  .empty { opacity: 0.5; font-size: 0.85rem; margin: 0; }
-</style>

@@ -30,10 +30,7 @@
 </script>
 
 <li class="flex items-center gap-2 rounded-md bg-muted/40 px-2.5 py-2">
-  <!-- 설정 화면의 "사용" 체크박스와 같은 이유로 함수 바인딩이어야 한다.
-       onToggle이 스토어를 갱신하고 저장이 실패하면 스토어가 task.status를
-       되돌리는데, 평범한 prop으로 넘기면 그 되돌림이 화면에 닿지 않는다.
-       게터가 task.status를 매번 다시 읽어야 롤백이 반영된다. -->
+  <!-- 게터로 넘겨야 저장 실패 후 스토어가 되돌린 status가 화면에 반영된다 -->
   <Checkbox
     bind:checked={() => task.status === 'done', () => onToggle(task)}
     aria-label="{task.title} 완료"
@@ -49,9 +46,7 @@
   </span>
 
   {#if project}
-    <!-- 사용자가 고른 색을 CSS 변수로 넘기고 color-mix로 옅게 만든다.
-         예전처럼 hex 뒤에 "22"를 이어붙이면 #rrggbb가 아닌 값에서
-         조용히 투명해진다. 글자는 foreground로 둬야 어떤 색을 골라도 읽힌다. -->
+    <!-- hex에 알파를 이어붙이면 #rrggbb가 아닌 값에서 투명해진다 -->
     <span
       class="project-pill inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs text-foreground"
       style="--pc:{project.color}"

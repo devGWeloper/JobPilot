@@ -25,10 +25,7 @@
 
   const pending = $derived(pendingForWrapUp(tasks.all, today))
 
-  // $derived여야 한다. today는 자정을 넘기면 실제로 바뀌는데(App.svelte 참고)
-  // 이 시트는 열린 채로 살아 있을 수 있다. 평범한 const로 두면 tomorrow가
-  // 굳어서, 이월 대상이 이미 지나간 날짜가 되고 carryTask가 계속 거부한다.
-  // 컴포넌트가 리마운트되지 않으므로 다시 시도해도 빠져나오지 못한다.
+  // today가 자정에 바뀌는데 이 시트는 열린 채 살아 있을 수 있다
   const tomorrow = $derived(addDays(today, 1))
 
   let choices = $state<Record<string, Choice>>({})
@@ -74,9 +71,7 @@
   }
 </script>
 
-<!-- 이 컴포넌트는 Today가 {#if}로 감싸 열려 있을 때만 존재한다. 그래서
-     게터는 항상 true이고, Dialog가 닫히려 할 때 onClose로 알린다.
-     Escape·바깥 클릭·포커스 트랩은 모두 Dialog가 처리하므로 직접 붙이지 않는다. -->
+<!-- Today의 {#if}가 마운트를 소유하므로 게터는 늘 true다 -->
 <Dialog.Root
   bind:open={
     () => true,

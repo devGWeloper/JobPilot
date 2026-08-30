@@ -25,10 +25,8 @@
 
   let actionError = $state<string | null>(null)
 
-  // 상태 전이는 잘못된 전환에서 throw하고, 저장은 디스크 사정으로 실패할 수
-  // 있다. 모든 동작을 이 함수로 통과시켜, 실패가 unhandled rejection으로
-  // 조용히 사라지지 않고 화면에 뜨게 한다.
-  // 성공 여부를 돌려주는 이유: QuickAdd가 실패 시 입력칸을 남겨야 한다.
+  // 모든 조작을 통과시켜 실패가 unhandled rejection이 되지 않게 한다.
+  // boolean을 돌려주는 이유는 QuickAdd가 실패 시 입력칸을 남겨야 해서다.
   async function run(action: () => Promise<unknown>): Promise<boolean> {
     try {
       await action()

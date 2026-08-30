@@ -14,8 +14,7 @@
   let newColor = $state('#4f7cff')
   let message = $state<string | null>(null)
 
-  // 저장은 실패할 수 있다. 모든 변경을 이 함수로 통과시켜, 실패가
-  // unhandled rejection으로 조용히 사라지지 않고 화면에 뜨게 한다.
+  // 모든 변경을 통과시켜 실패가 unhandled rejection이 되지 않게 한다
   async function run(action: () => Promise<unknown>): Promise<boolean> {
     try {
       await action()
@@ -93,11 +92,7 @@
         <ul class="divide-y divide-border">
           {#each config.config.projects as p (p.id)}
             <li class="flex items-center gap-3 py-2">
-              <!-- 테두리를 점 색이 아니라 카드 배경 기준으로 대비시킨다.
-                   ring-border는 다크에서 카드와 명도 차이가 7포인트뿐이라,
-                   사용자가 어두운 프로젝트 색을 고르면 점이 통째로 사라진다.
-                   ring-foreground/20은 다크에서 1.83:1로 여전히 WCAG 1.4.11의
-                   3:1에 못 미쳐 /40으로 올렸다(약 3.56:1). -->
+              <!-- 테두리는 점 색이 아니라 카드 기준으로 대비시킨다 (다크 3.56:1) -->
               <span
                 class="size-3.5 shrink-0 rounded-full ring-1 ring-foreground/40"
                 style="background:{p.color}"
@@ -111,12 +106,7 @@
               />
 
               <div class="flex shrink-0 items-center gap-1.5">
-                <!-- 평범한 prop이 아니라 함수 바인딩이어야 한다.
-                     Checkbox는 checked를 $bindable로 선언해 bits-ui에 넘기므로,
-                     클릭하는 순간 상태 소유권이 그쪽으로 넘어간다. 저장이 실패해
-                     스토어가 p.active를 원래 값으로 되돌려도 prop 값은 그대로라
-                     Svelte가 정정을 내려보내지 않고, 체크박스만 뒤집힌 채 남는다.
-                     게터로 넘기면 롤백이 그대로 화면에 반영된다. -->
+                <!-- 게터로 넘겨야 저장 실패 후의 롤백이 화면에 반영된다 -->
                 <Checkbox
                   id="active-{p.id}"
                   bind:checked={
